@@ -22,7 +22,7 @@ import { RESUME_CSS } from "@/lib/resume-styles";
  * Print whitespace comes from @page margins.
  */
 const CONTENT_WIDTH = 720;
-const PAGE_HEIGHT = 960;
+const PAGE_HEIGHT = 970;
 const PAGE_PADDING = 32;
 const FRAME_WIDTH = CONTENT_WIDTH + PAGE_PADDING * 2; // 784
 
@@ -134,7 +134,8 @@ function ResumeContent({
   const editable = !isStreaming && !!onEdit;
 
   const handleBlur = (key: string) => (e: React.FocusEvent<HTMLElement>) => {
-    const text = e.currentTarget.innerText.trim();
+    // Normalize: collapse 3+ consecutive newlines into 2 (prevents accumulation from div/br rendering)
+    const text = e.currentTarget.innerText.trim().replace(/\n{3,}/g, "\n\n");
     if (text !== placeholders[key]) {
       onEdit?.(key, text);
     }
@@ -342,47 +343,71 @@ function ResumeContent({
 
       {/* Education */}
       {placeholders.EDUCATION && (
-        <section className="resume-section">
-          <h2>Education</h2>
-          <div
-            contentEditable={editable}
-            suppressContentEditableWarning
-            onBlur={handleBlur("EDUCATION")}
-            className={editable ? "resume-editable" : undefined}
-          >
-            {placeholders.EDUCATION}
-          </div>
-        </section>
+        <AiSectionEditor
+          sectionKey="EDUCATION"
+          currentContent={placeholders.EDUCATION}
+          jobDescription={jobDescription}
+          editable={editable}
+          onAccept={(val) => onEdit?.("EDUCATION", val)}
+        >
+          <section className="resume-section">
+            <h2>Education</h2>
+            <div
+              contentEditable={editable}
+              suppressContentEditableWarning
+              onBlur={handleBlur("EDUCATION")}
+              className={editable ? "resume-editable" : undefined}
+            >
+              {placeholders.EDUCATION}
+            </div>
+          </section>
+        </AiSectionEditor>
       )}
 
       {/* Skills */}
       {placeholders.SKILLS && (
-        <section className="resume-section">
-          <h2>Skills</h2>
-          <p
-            contentEditable={editable}
-            suppressContentEditableWarning
-            onBlur={handleBlur("SKILLS")}
-            className={editable ? "resume-editable" : undefined}
-          >
-            {placeholders.SKILLS}
-          </p>
-        </section>
+        <AiSectionEditor
+          sectionKey="SKILLS"
+          currentContent={placeholders.SKILLS}
+          jobDescription={jobDescription}
+          editable={editable}
+          onAccept={(val) => onEdit?.("SKILLS", val)}
+        >
+          <section className="resume-section">
+            <h2>Skills</h2>
+            <p
+              contentEditable={editable}
+              suppressContentEditableWarning
+              onBlur={handleBlur("SKILLS")}
+              className={editable ? "resume-editable" : undefined}
+            >
+              {placeholders.SKILLS}
+            </p>
+          </section>
+        </AiSectionEditor>
       )}
 
       {/* Certifications */}
       {placeholders.CERTIFICATIONS && (
-        <section className="resume-section">
-          <h2>Certifications</h2>
-          <div
-            contentEditable={editable}
-            suppressContentEditableWarning
-            onBlur={handleBlur("CERTIFICATIONS")}
-            className={editable ? "resume-editable" : undefined}
-          >
-            {placeholders.CERTIFICATIONS}
-          </div>
-        </section>
+        <AiSectionEditor
+          sectionKey="CERTIFICATIONS"
+          currentContent={placeholders.CERTIFICATIONS}
+          jobDescription={jobDescription}
+          editable={editable}
+          onAccept={(val) => onEdit?.("CERTIFICATIONS", val)}
+        >
+          <section className="resume-section">
+            <h2>Certifications</h2>
+            <div
+              contentEditable={editable}
+              suppressContentEditableWarning
+              onBlur={handleBlur("CERTIFICATIONS")}
+              className={editable ? "resume-editable" : undefined}
+            >
+              {placeholders.CERTIFICATIONS}
+            </div>
+          </section>
+        </AiSectionEditor>
       )}
 
       {/* Streaming skeletons */}

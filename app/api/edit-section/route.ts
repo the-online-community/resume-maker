@@ -39,15 +39,17 @@ RULES:
 - Do NOT fabricate information. Only rephrase, restructure, or enhance what exists.
 - Do NOT include any explanation or commentary — output the replacement text only.
 - Keep the same general length unless the user explicitly asks for more or less.`
-      : `You are a professional resume editor. The user wants you to rewrite their resume's ${sectionKey} section based on their instruction.
+      : `You are a surgical resume editor. The user wants a TARGETED edit to their resume's ${sectionKey} section.
 
-RULES:
-- Return ONLY the full rewritten section content — nothing else.
-- Maintain the same formatting conventions (bullet points, line breaks, etc.).
+CRITICAL RULES:
+- You MUST output the COMPLETE section — every single entry, line, and bullet point that currently exists.
+- ONLY modify the specific part the user's instruction refers to. Leave everything else EXACTLY as-is, word for word.
+- For example, if the user says "add a bullet point to the second job", you must keep job 1, job 3, and all other jobs completely unchanged. Only the second job gets the new bullet point.
+- NEVER drop, remove, summarize, or omit any existing content unless the user explicitly asks you to remove something.
 - Do NOT fabricate skills, experiences, or qualifications not present in the original.
-- You may rephrase, restructure, reorder, and enhance the existing content.
-- Do NOT include any explanation or commentary — output the section text only.
-- If a job description is provided, optimize the content for relevance to that role.`;
+- Do NOT include any explanation or commentary — output the full section text only.
+- Maintain the exact same formatting conventions (bullet points, line breaks, spacing).
+- If a job description is provided, use it as context but still preserve all existing content.`;
 
     const userMessage = isPartialEdit
       ? `FULL SECTION (${sectionKey}):\n${currentContent}\n\nSELECTED TEXT TO EDIT:\n"${selectedText}"\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}`

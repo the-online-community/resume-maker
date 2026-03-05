@@ -173,16 +173,16 @@ export default function Page() {
   }, [placeholders]);
 
   return (
-    <div className="flex flex-1 flex-col px-16 pt-8 pb-16">
+    <div className="flex flex-1 flex-col px-4 pt-6 pb-12 sm:px-8 md:px-12 lg:px-16 lg:pt-8 lg:pb-16">
       {/* Header */}
-      <div className="mb-8 flex items-center justify-between">
-        <h1 className="font-mono text-xl font-bold">Resume Maker</h1>
+      <div className="mb-6 flex items-center justify-between lg:mb-8">
+        <h1 className="font-mono text-lg font-bold sm:text-xl">Resume Maker</h1>
         <ThemeToggle />
       </div>
 
-      <div className="flex flex-1 gap-8">
+      <div className="flex flex-1 flex-col gap-8 lg:flex-row">
         {/* Left panel */}
-        <div className="flex w-full flex-col gap-8">
+        <div className="flex w-full flex-col gap-6 lg:gap-8">
           <div className="h-fit w-full">
             <h2 className="mb-4 font-mono">Job Description</h2>
             <TextEditor

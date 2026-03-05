@@ -221,7 +221,7 @@ export default function Page() {
         </div>
       </div>
 
-      <div className="flex flex-1 flex-col gap-8 lg:flex-row">
+      <div className="flex flex-1 flex-col items-start gap-8 lg:flex-row">
         {/* Left panel */}
         <div className="flex w-full flex-col gap-6 lg:gap-8">
           <div className="h-fit w-full">
@@ -236,12 +236,7 @@ export default function Page() {
           {error && <p className="text-destructive text-sm">{error}</p>}
 
           {!authLoading && !user ? (
-            <div className="flex flex-col gap-2">
-              <p className="text-muted-foreground text-sm">
-                Sign in to tailor your resume
-              </p>
-              <SignInButton />
-            </div>
+            <SignInButton />
           ) : (
             <div className="flex items-center gap-3">
               <Button

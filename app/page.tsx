@@ -248,6 +248,7 @@ export default function Page() {
             isLoading={isLoading}
             isStreaming={isStreaming}
             onDownloadPdf={handleDownloadPdf}
+            jobDescription={jobDescriptionRef.current}
             onPlaceholderChange={(key, value) =>
               setPlaceholders((prev) =>
                 prev ? { ...prev, [key]: value } : prev,

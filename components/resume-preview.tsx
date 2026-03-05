@@ -2,6 +2,7 @@
 
 import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
 
+import { AiSectionEditor } from "@/components/ai-section-editor";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -31,6 +32,7 @@ interface ResumePreviewProps {
   isStreaming?: boolean;
   onDownloadPdf?: () => void;
   onPlaceholderChange?: (key: string, value: string) => void;
+  jobDescription?: string;
 }
 
 /** Ensure a URL has a protocol prefix for href. */
@@ -122,10 +124,12 @@ function ResumeContent({
   placeholders,
   isStreaming,
   onEdit,
+  jobDescription,
 }: {
   placeholders: Record<string, string>;
   isStreaming?: boolean;
   onEdit?: (key: string, value: string) => void;
+  jobDescription?: string;
 }) {
   const editable = !isStreaming && !!onEdit;
 
@@ -280,32 +284,60 @@ function ResumeContent({
 
       {/* Summary */}
       {placeholders.SUMMARY && (
-        <section className="resume-section">
-          <h2>Summary</h2>
-          <p
-            contentEditable={editable}
-            suppressContentEditableWarning
-            onBlur={handleBlur("SUMMARY")}
-            className={editable ? "resume-editable" : undefined}
-          >
-            {placeholders.SUMMARY}
-          </p>
-        </section>
+        <AiSectionEditor
+          sectionKey="SUMMARY"
+          currentContent={placeholders.SUMMARY}
+          jobDescription={jobDescription}
+          editable={editable}
+          onAccept={(val) => onEdit?.("SUMMARY", val)}
+        >
+          <section className="resume-section">
+            <h2>Summary</h2>
+            <p
+              contentEditable={editable}
+              suppressContentEditableWarning
+              onBlur={handleBlur("SUMMARY")}
+              className={editable ? "resume-editable" : undefined}
+            >
+              {placeholders.SUMMARY}
+            </p>
+          </section>
+        </AiSectionEditor>
       )}
 
       {/* Experience */}
       {placeholders.EXPERIENCE && (
-        <section className="resume-section">
-          <h2>Experience</h2>
-          <div
-            contentEditable={editable}
-            suppressContentEditableWarning
-            onBlur={handleBlur("EXPERIENCE")}
-            className={editable ? "resume-editable" : undefined}
-          >
-            {placeholders.EXPERIENCE}
-          </div>
-        </section>
+        <AiSectionEditor
+          sectionKey="EXPERIENCE"
+          currentContent={placeholders.EXPERIENCE}
+          jobDescription={jobDescription}
+          editable={editable}
+          onAccept={(val) => onEdit?.("EXPERIENCE", val)}
+        >
+          <section className="resume-section">
+            <h2>Experience</h2>
+            <div
+              contentEditable={editable}
+              suppressContentEditableWarning
+              onBlur={handleBlur("EXPERIENCE")}
+              className={editable ? "resume-editable" : undefined}
+            >
+              {placeholders.EXPERIENCE.split("\n").map((line, i) => {
+                const trimmed = line.trim();
+                if (!trimmed) return <br key={i} />;
+                const isBullet = /^[•\-*]/.test(trimmed);
+                return (
+                  <div
+                    key={i}
+                    style={isBullet ? undefined : { fontWeight: 600 }}
+                  >
+                    {line}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        </AiSectionEditor>
       )}
 
       {/* Education */}
@@ -391,6 +423,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       isStreaming,
       onDownloadPdf,
       onPlaceholderChange,
+      jobDescription,
     },
     ref,
   ) {
@@ -560,6 +593,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                         placeholders={placeholders}
                         isStreaming={isStreaming}
                         onEdit={i === 0 ? onPlaceholderChange : undefined}
+                        jobDescription={i === 0 ? jobDescription : undefined}
                       />
                     </div>
                   </div>

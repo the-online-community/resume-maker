@@ -132,3 +132,32 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* AI section editor */
+.ai-section-wrapper {
+  position: relative;
+}
+
+.ai-section-btn {
+  position: absolute;
+  top: -2px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--border);
+  background: var(--secondary);
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    opacity 0.15s,
+    transform 0.15s,
+    box-shadow 0.15s;
+  z-index: 10;
+}
+
+.ai-section-btn:hover {
+  transform: scale(1.1);
+}

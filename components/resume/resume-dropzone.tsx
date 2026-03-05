@@ -1,9 +1,24 @@
 "use client";
 
-import { Cancel01Icon, FileIcon } from "@hugeicons/core-free-icons";
+import {
+  ArrowDown01Icon,
+  Cancel01Icon,
+  FileIcon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useState } from "react";
 
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import {
   Dropzone,
   DropZoneArea,
@@ -19,15 +34,20 @@ import {
   type FileStatus,
 } from "@/components/ui/dropzone";
 import {
+  clearAllResumes,
   deleteResume,
   getAllResumes,
   saveResume,
   type ResumeEntry,
-} from "@/lib/resume-store";
+} from "@/lib/resume/resume-store";
 import { cn } from "@/lib/utils";
 
 export default function ResumeDropzone() {
   const [savedResumes, setSavedResumes] = useState<ResumeEntry[]>([]);
+  const [historyOpen, setHistoryOpen] = useState(() => {
+    if (typeof window === "undefined") return true;
+    return localStorage.getItem("resume-history-open") !== "false";
+  });
 
   // Load persisted resumes on mount
   useEffect(() => {
@@ -91,28 +111,88 @@ export default function ResumeDropzone() {
 
       {hasFiles && (
         <>
-          <h2 className="mt-10 font-mono">history</h2>
+          <div className="mt-10 flex items-center justify-between">
+            <button
+              type="button"
+              className="flex cursor-pointer items-center gap-2"
+              onClick={() => {
+                setHistoryOpen((prev) => {
+                  const next = !prev;
+                  localStorage.setItem("resume-history-open", String(next));
+                  return next;
+                });
+              }}
+            >
+              <h2 className="font-mono">history</h2>
+              <HugeiconsIcon
+                icon={ArrowDown01Icon}
+                className="text-muted-foreground size-4 transition-transform duration-200"
+                style={{
+                  transform: historyOpen ? "rotate(180deg)" : "rotate(0deg)",
+                }}
+              />
+            </button>
+            <Dialog>
+              <DialogTrigger asChild>
+                <button
+                  type="button"
+                  className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                >
+                  Clear All
+                </button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-sm">
+                <DialogHeader>
+                  <DialogTitle>Clear all resumes?</DialogTitle>
+                  <DialogDescription>
+                    This will permanently delete all saved resumes. This action
+                    cannot be undone.
+                  </DialogDescription>
+                </DialogHeader>
+                <DialogFooter className="gap-2">
+                  <DialogClose asChild>
+                    <Button variant="outline">Cancel</Button>
+                  </DialogClose>
+                  <DialogClose asChild>
+                    <Button
+                      variant="destructive"
+                      onClick={async () => {
+                        await clearAllResumes();
+                        setSavedResumes([]);
+                      }}
+                    >
+                      Clear All
+                    </Button>
+                  </DialogClose>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
+          </div>
 
-          {/* Currently uploading files */}
-          {dropzone.fileStatuses.length > 0 && (
-            <DropzoneFileList className="mt-4 gap-2">
-              {dropzone.fileStatuses.map((file) => (
-                <UploadingFileItem key={file.id} file={file} />
-              ))}
-            </DropzoneFileList>
-          )}
+          {historyOpen && (
+            <>
+              {/* Currently uploading files */}
+              {dropzone.fileStatuses.length > 0 && (
+                <DropzoneFileList className="mt-4 gap-2">
+                  {dropzone.fileStatuses.map((file) => (
+                    <UploadingFileItem key={file.id} file={file} />
+                  ))}
+                </DropzoneFileList>
+              )}
 
-          {/* Previously saved resumes */}
-          {persistedResumes.length > 0 && (
-            <ul className="mt-2 flex flex-col gap-2">
-              {persistedResumes.map((resume) => (
-                <SavedResumeItem
-                  key={resume.id}
-                  resume={resume}
-                  onRemove={handleRemoveSaved}
-                />
-              ))}
-            </ul>
+              {/* Previously saved resumes */}
+              {persistedResumes.length > 0 && (
+                <ul className="mt-2 flex flex-col gap-2">
+                  {persistedResumes.map((resume) => (
+                    <SavedResumeItem
+                      key={resume.id}
+                      resume={resume}
+                      onRemove={handleRemoveSaved}
+                    />
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </>
       )}

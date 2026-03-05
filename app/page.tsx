@@ -1,21 +1,25 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
-import ResumeDropzone from "@/components/resume-dropzone";
-import ResumePreview from "@/components/resume-preview";
+import ResumeDropzone from "@/components/resume/resume-dropzone";
+import ResumePreview from "@/components/resume/resume-preview";
+import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { getAllResumes } from "@/lib/resume-store";
-import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume-styles";
-import { DEFAULT_TEMPLATE } from "@/lib/templates";
+import { UserMenu } from "@/components/user-menu";
+import { useUser } from "@/hooks/use-user";
+import { getAllResumes } from "@/lib/resume/resume-store";
+import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
+import { DEFAULT_TEMPLATE } from "@/lib/resume/templates";
 
 const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
 });
 
 export default function Page() {
+  const { user, loading: authLoading } = useUser();
   const jobDescriptionRef = useRef("");
   const resumeRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -26,6 +30,33 @@ export default function Page() {
   > | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targetPages, setTargetPages] = useState(1);
+
+  const MAX_ATTEMPTS = 5;
+  const [usageCount, setUsageCount] = useState(0);
+  const [usageLoaded, setUsageLoaded] = useState(false);
+
+  // Fetch usage count from DB when user changes
+  useEffect(() => {
+    if (!user) return;
+    setUsageLoaded(false);
+    fetch("/api/usage")
+      .then((res) => res.json())
+      .then((data: { count: number }) => setUsageCount(data.count))
+      .catch(() => {})
+      .finally(() => setUsageLoaded(true));
+  }, [user]);
+
+  const incrementUsage = useCallback(async () => {
+    try {
+      const res = await fetch("/api/usage", { method: "POST" });
+      const data = (await res.json()) as { count: number };
+      setUsageCount(data.count);
+    } catch {
+      // Silently fail — count was already enforced server-side
+    }
+  }, []);
+
+  const attemptsLeft = MAX_ATTEMPTS - usageCount;
 
   const handleTailor = useCallback(async () => {
     const jobDescription = jobDescriptionRef.current;
@@ -130,13 +161,14 @@ export default function Page() {
       >;
       setPlaceholders(finalPlaceholders);
       setIsStreaming(false);
+      incrementUsage();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setIsStreaming(false);
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages]);
+  }, [targetPages, incrementUsage]);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
@@ -173,11 +205,20 @@ export default function Page() {
   }, [placeholders]);
 
   return (
-    <div className="flex flex-1 flex-col px-4 pt-6 pb-12 sm:px-8 md:px-12 lg:px-16 lg:pt-8 lg:pb-16">
+    <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between lg:mb-8">
         <h1 className="font-mono text-lg font-bold sm:text-xl">Resume Maker</h1>
-        <ThemeToggle />
+        <div className="flex items-center gap-2">
+          {user && (
+            <UserMenu
+              user={user}
+              usageCount={usageCount}
+              maxAttempts={MAX_ATTEMPTS}
+            />
+          )}
+          <ThemeToggle />
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-8 lg:flex-row">
@@ -194,45 +235,60 @@ export default function Page() {
 
           {error && <p className="text-destructive text-sm">{error}</p>}
 
-          <div className="flex items-center gap-3">
-            <Button
-              size="lg"
-              className="flex-1"
-              onClick={handleTailor}
-              disabled={isLoading}
-            >
-              {isLoading ? "Tailoring..." : "Tailor Resume"}
-            </Button>
+          {!authLoading && !user ? (
+            <div className="flex flex-col gap-2">
+              <p className="text-muted-foreground text-sm">
+                Sign in to tailor your resume
+              </p>
+              <SignInButton />
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button
+                size="lg"
+                className="flex-1"
+                onClick={handleTailor}
+                disabled={
+                  isLoading || authLoading || !usageLoaded || attemptsLeft <= 0
+                }
+              >
+                {attemptsLeft <= 0
+                  ? "Limit reached"
+                  : isLoading
+                    ? "Tailoring..."
+                    : "Tailor Resume"}
+              </Button>
 
-            <div className="flex items-center gap-2">
-              <span className="text-muted-foreground text-xs whitespace-nowrap">
-                Pages
-              </span>
-              <div className="border-input flex items-center border">
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
-                  disabled={targetPages <= 1}
-                  aria-label="Decrease pages"
-                >
-                  −
-                </button>
-                <span className="w-6 text-center text-sm font-medium tabular-nums">
-                  {targetPages}
+              <div className="flex items-center gap-2">
+                <span className="text-muted-foreground text-xs whitespace-nowrap">
+                  Pages
                 </span>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                  onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
-                  disabled={targetPages >= 2}
-                  aria-label="Increase pages"
-                >
-                  +
-                </button>
+                <div className="border-input flex items-center border">
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
+                    disabled={targetPages <= 1}
+                    aria-label="Decrease pages"
+                  >
+                    −
+                  </button>
+                  <span className="w-6 text-center text-sm font-medium tabular-nums">
+                    {targetPages}
+                  </span>
+                  <button
+                    type="button"
+                    className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                    onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
+                    disabled={targetPages >= 2}
+                    aria-label="Increase pages"
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           <div>
             <ResumeDropzone />

@@ -40,19 +40,22 @@ export default function TextEditor({
     const el = containerRef.current;
     if (!el) return;
 
-    const observer = new ResizeObserver(() => {
-      setIsOverflowing(el.scrollHeight > el.clientHeight);
-    });
+    const check = () => setIsOverflowing(el.scrollHeight > el.clientHeight);
 
-    // Observe the inner content (first child) so we detect when IT grows
+    const observer = new ResizeObserver(check);
+
+    // Observe the container itself
+    observer.observe(el);
+
+    // Also observe the inner content (first child) so we detect when IT grows
     const inner = el.firstElementChild;
     if (inner) observer.observe(inner);
 
-    // Also check immediately
-    setIsOverflowing(el.scrollHeight > el.clientHeight);
+    // Check immediately
+    check();
 
     return () => observer.disconnect();
-  }, [expanded]);
+  }, [expanded, hasContent]);
 
   const editor = usePlateEditor({
     plugins: [
@@ -116,7 +119,7 @@ export default function TextEditor({
         <div
           ref={containerRef}
           className={cn(
-            "min-h-56 overflow-hidden transition-[max-height] duration-300 ease-in-out",
+            "min-h-[225px] overflow-hidden transition-[max-height] duration-300 ease-in-out",
             expanded ? "max-h-none" : "max-h-56",
           )}
         >

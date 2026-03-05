@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 
+import { Footer } from "@/components/footer";
 import { ThemeProvider } from "@/components/theme-provider";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
@@ -34,7 +35,10 @@ export default function RootLayout({
       >
         <ThemeProvider>
           <TooltipProvider>
-            <main className="flex min-h-screen flex-col">{children}</main>
+            <main className="flex min-h-screen flex-col">
+              {children}
+              <Footer />
+            </main>
           </TooltipProvider>
         </ThemeProvider>
       </body>

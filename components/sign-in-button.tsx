@@ -10,14 +10,17 @@ export default function SignInButton() {
       provider: "google",
       options: {
         redirectTo: `${window.location.origin}/auth/callback`,
-        scopes:
-          "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/documents",
       },
     });
   };
 
   return (
-    <Button onClick={handleSignIn} variant="outline" size="lg">
+    <Button
+      onClick={handleSignIn}
+      variant="outline"
+      size="lg"
+      className="w-full"
+    >
       Sign in with Google
     </Button>
   );

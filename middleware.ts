@@ -29,8 +29,12 @@ export async function middleware(request: NextRequest) {
     },
   );
 
-  // Refresh session if expired
-  await supabase.auth.getUser();
+  // Refresh session if expired — ignore lock errors from concurrent requests
+  try {
+    await supabase.auth.getUser();
+  } catch {
+    // "Lock broken by another request" — safe to ignore
+  }
 
   return supabaseResponse;
 }

@@ -74,34 +74,32 @@ export default function Page() {
     try {
       // 1. Get saved resumes from IndexedDB
       const savedResumes = await getAllResumes();
-      if (savedResumes.length === 0) {
-        setError("Please upload at least one resume");
-        setIsLoading(false);
-        return;
+      let resumeTexts: string[] = [];
+
+      // 2. If resumes exist, parse them on the server
+      if (savedResumes.length > 0) {
+        const formData = new FormData();
+        for (const resume of savedResumes) {
+          formData.append("files", resume.file, resume.fileName);
+        }
+
+        const parseRes = await fetch("/api/parse-pdf", {
+          method: "POST",
+          body: formData,
+        });
+
+        if (!parseRes.ok) {
+          throw new Error("Failed to parse PDF files");
+        }
+
+        const { results: parsedResumes } = (await parseRes.json()) as {
+          results: { fileName: string; text: string }[];
+        };
+
+        resumeTexts = parsedResumes.map((r) => r.text);
       }
 
-      // 2. Parse PDFs on the server
-      const formData = new FormData();
-      for (const resume of savedResumes) {
-        formData.append("files", resume.file, resume.fileName);
-      }
-
-      const parseRes = await fetch("/api/parse-pdf", {
-        method: "POST",
-        body: formData,
-      });
-
-      if (!parseRes.ok) {
-        throw new Error("Failed to parse PDF files");
-      }
-
-      const { results: parsedResumes } = (await parseRes.json()) as {
-        results: { fileName: string; text: string }[];
-      };
-
-      const resumeTexts = parsedResumes.map((r) => r.text);
-
-      // 3. Tailor with AI (streamed)
+      // 3. Tailor with AI (streamed) — if no resumes, pass user info for generation
       const tailorRes = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -110,6 +108,8 @@ export default function Page() {
           resumeTexts,
           placeholders: DEFAULT_TEMPLATE.placeholders,
           targetPages,
+          userName: user?.user_metadata?.full_name || user?.user_metadata?.name,
+          userEmail: user?.email,
         }),
       });
 
@@ -168,7 +168,7 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage]);
+  }, [targetPages, incrementUsage, user]);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;

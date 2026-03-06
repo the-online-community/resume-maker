@@ -5,14 +5,25 @@ interface TailorRequest {
   resumeTexts: string[];
   placeholders: string[];
   targetPages?: number;
+  userName?: string;
+  userEmail?: string;
 }
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as TailorRequest;
-    const { jobDescription, resumeTexts, placeholders, targetPages = 1 } = body;
+    const {
+      jobDescription,
+      resumeTexts,
+      placeholders,
+      targetPages = 1,
+      userName,
+      userEmail,
+    } = body;
 
-    if (!jobDescription || !resumeTexts.length || !placeholders.length) {
+    const hasResumes = resumeTexts && resumeTexts.length > 0;
+
+    if (!jobDescription || !placeholders.length) {
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         {
@@ -35,7 +46,8 @@ export async function POST(request: Request) {
       messages: [
         {
           role: "system",
-          content: `You are a professional resume writer. Your job is to create a tailored resume from the user's existing resume data, optimized for a specific job description.
+          content: hasResumes
+            ? `You are a professional resume writer. Your job is to create a tailored resume from the user's existing resume data, optimized for a specific job description.
 
 CRITICAL RULES:
 - ONLY use information that exists in the user's resumes. DO NOT fabricate skills, experiences, companies, degrees, or qualifications.
@@ -64,17 +76,58 @@ Guidelines for each field:
 - SKILLS: Comma-separated list of skills from the user's resume, ordered by relevance to the job description
 - CERTIFICATIONS: If present in the user's resume, list them. Otherwise empty string.
 
-Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.`,
+Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.`
+            : `You are a professional resume writer. The user has NOT uploaded a resume. Your job is to generate a well-structured resume draft tailored to the given job description.
+
+You know the user's name${userEmail ? " and email" : ""}. Use this information and create a professional resume that:
+- Has a strong professional summary tailored to the job description
+- Includes realistic, well-structured PLACEHOLDER experience entries that match the job requirements. Use "[Company Name]" and "[City, State]" as placeholders for company and location. Use "[Start Date] – [End Date]" for dates.
+- Lists relevant skills extracted from the job description requirements
+- Includes a placeholder education entry: "[Degree], [University] | [Year]"
+- Uses action verbs and quantified achievements in bullet points (with [X] as number placeholders)
+
+The user will fill in their real details afterward — your job is to give them a polished, ATS-optimized starting point.
+
+PAGE LENGTH TARGET: ${targetPages} page${targetPages > 1 ? "s" : ""}.
+${targetPages === 1 ? "Keep the resume concise — aim for content that fits on a single US Letter page. Use 2-3 bullet points per role, a brief summary, and only list the most relevant skills." : "Fill 2 full pages — expand bullet points to 4-5 per role, elaborate on achievements with more detail, include a longer summary, and list more skills and certifications."}
+
+Output a JSON object with these exact keys: ${placeholderList}
+
+Guidelines for each field:
+- FULL_NAME: Use "${userName || "[Your Name]"}"
+- JOB_TITLE: A concise professional title matching the job description
+- EMAIL: Use "${userEmail || "[your.email@example.com]"}"
+- PHONE: Use "[Your Phone Number]"
+- LOCATION: Use "[City, State]"
+- LINKEDIN: Use "linkedin.com/in/[username]"
+- GITHUB: Use "github.com/[username]" if the role is technical, otherwise empty string
+- WEBSITE: Empty string
+- SUMMARY: 2-3 sentence professional summary tailored to the job description
+- EXPERIENCE: Formatted as a string with 2-3 placeholder roles relevant to the job. For each role: Job Title at [Company Name] | [City, State] | [Start Date] – [End Date], followed by bullet points with quantified achievements using [X] placeholders.
+- EDUCATION: "[Degree], [University] | [Year]"
+- SKILLS: Comma-separated list of skills from the job description requirements
+- CERTIFICATIONS: Empty string
+
+Keep all content professional and concise. Optimize for ATS compatibility.`,
         },
         {
           role: "user",
-          content: `JOB DESCRIPTION:
+          content: hasResumes
+            ? `JOB DESCRIPTION:
 ${jobDescription}
 
 USER'S RESUME(S):
 ${resumeTexts.map((text, i) => `--- Resume ${i + 1} ---\n${text}`).join("\n\n")}
 
-Generate the tailored resume data as JSON with these fields: ${placeholderList}`,
+Generate the tailored resume data as JSON with these fields: ${placeholderList}`
+            : `JOB DESCRIPTION:
+${jobDescription}
+
+USER INFO:
+- Name: ${userName || "[Your Name]"}
+- Email: ${userEmail || "[your.email@example.com]"}
+
+Generate a resume draft as JSON with these fields: ${placeholderList}`,
         },
       ],
     });

@@ -30,6 +30,8 @@ export default function Page() {
   > | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targetPages, setTargetPages] = useState(1);
+  const [hasJobDescription, setHasJobDescription] = useState(false);
+  const editorResetRef = useRef<(() => void) | null>(null);
 
   const MAX_ATTEMPTS = 5;
   const [usageCount, setUsageCount] = useState(0);
@@ -225,11 +227,24 @@ export default function Page() {
         {/* Left panel */}
         <div className="flex w-full flex-col gap-6 lg:gap-8">
           <div className="h-fit w-full">
-            <h2 className="mb-4 font-mono">Job Description</h2>
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-mono">Job Description</h2>
+              {hasJobDescription && (
+                <button
+                  type="button"
+                  onClick={() => editorResetRef.current?.()}
+                  className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                >
+                  Reset
+                </button>
+              )}
+            </div>
             <TextEditor
               onTextChange={(text) => {
                 jobDescriptionRef.current = text;
               }}
+              onHasContentChange={setHasJobDescription}
+              onResetRef={editorResetRef}
             />
           </div>
 

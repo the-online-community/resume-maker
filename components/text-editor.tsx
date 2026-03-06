@@ -11,7 +11,7 @@ import {
 } from "@platejs/basic-nodes/react";
 import type { Value } from "platejs";
 import { Plate, usePlateEditor } from "platejs/react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { BlockquoteElement } from "@/components/ui/blockquote-node";
 import { Editor, EditorContainer } from "@/components/ui/editor";
@@ -27,8 +27,12 @@ const initialValue: Value = [
 
 export default function TextEditor({
   onTextChange,
+  onHasContentChange,
+  onResetRef,
 }: {
   onTextChange?: (text: string) => void;
+  onHasContentChange?: (hasContent: boolean) => void;
+  onResetRef?: React.MutableRefObject<(() => void) | null>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hasContent, setHasContent] = useState(false);
@@ -74,6 +78,22 @@ export default function TextEditor({
     },
   });
 
+  const handleReset = useCallback(() => {
+    editor.tf.setValue(initialValue);
+    localStorage.removeItem("installation-next-demo");
+    setHasContent(false);
+    setExpanded(false);
+    onTextChange?.("");
+    onHasContentChange?.(false);
+  }, [editor, onTextChange, onHasContentChange]);
+
+  // Expose reset to parent via ref
+  useEffect(() => {
+    if (onResetRef) {
+      onResetRef.current = handleReset;
+    }
+  }, [onResetRef, handleReset]);
+
   // Fire onTextChange on mount with saved text so the parent has the value
   useEffect(() => {
     const saved = localStorage.getItem("installation-next-demo");
@@ -104,6 +124,7 @@ export default function TextEditor({
           .flatMap((n: { children: { text?: string }[] }) => n.children)
           .some((c: { text?: string }) => c.text && c.text.trim().length > 0);
         setHasContent(text);
+        onHasContentChange?.(text);
 
         // Extract plain text for parent
         const plainText = value

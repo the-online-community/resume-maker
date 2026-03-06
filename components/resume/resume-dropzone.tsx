@@ -11,7 +11,6 @@ import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
-  DialogClose,
   DialogContent,
   DialogDescription,
   DialogFooter,
@@ -44,6 +43,7 @@ import { cn } from "@/lib/utils";
 
 export default function ResumeDropzone() {
   const [savedResumes, setSavedResumes] = useState<ResumeEntry[]>([]);
+  const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("resume-history-open") !== "false";
@@ -73,17 +73,11 @@ export default function ResumeDropzone() {
     setSavedResumes((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
-  // Combine: show saved resumes that aren't currently being uploaded
-  const uploadingIds = new Set(
-    dropzone.fileStatuses
-      .filter((f) => f.status === "success")
-      .map((f) => f.result),
+  const pendingFiles = dropzone.fileStatuses.filter(
+    (f) => f.status !== "success",
   );
 
-  const persistedResumes = savedResumes.filter((r) => !uploadingIds.has(r.id));
-
-  const hasFiles =
-    dropzone.fileStatuses.length > 0 || persistedResumes.length > 0;
+  const hasFiles = pendingFiles.length > 0 || savedResumes.length > 0;
 
   return (
     <Dropzone {...dropzone}>
@@ -132,7 +126,7 @@ export default function ResumeDropzone() {
                 }}
               />
             </button>
-            <Dialog>
+            <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
               <DialogTrigger asChild>
                 <button
                   type="button"
@@ -150,20 +144,22 @@ export default function ResumeDropzone() {
                   </DialogDescription>
                 </DialogHeader>
                 <DialogFooter className="gap-2">
-                  <DialogClose asChild>
-                    <Button variant="outline">Cancel</Button>
-                  </DialogClose>
-                  <DialogClose asChild>
-                    <Button
-                      variant="destructive"
-                      onClick={async () => {
-                        await clearAllResumes();
-                        setSavedResumes([]);
-                      }}
-                    >
-                      Clear All
-                    </Button>
-                  </DialogClose>
+                  <Button
+                    variant="outline"
+                    onClick={() => setClearDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      setSavedResumes([]);
+                      clearAllResumes();
+                      setClearDialogOpen(false);
+                    }}
+                  >
+                    Clear All
+                  </Button>
                 </DialogFooter>
               </DialogContent>
             </Dialog>
@@ -171,19 +167,19 @@ export default function ResumeDropzone() {
 
           {historyOpen && (
             <>
-              {/* Currently uploading files */}
-              {dropzone.fileStatuses.length > 0 && (
+              {/* Currently uploading files (pending/error only) */}
+              {pendingFiles.length > 0 && (
                 <DropzoneFileList className="mt-4 gap-2">
-                  {dropzone.fileStatuses.map((file) => (
+                  {pendingFiles.map((file) => (
                     <UploadingFileItem key={file.id} file={file} />
                   ))}
                 </DropzoneFileList>
               )}
 
-              {/* Previously saved resumes */}
-              {persistedResumes.length > 0 && (
+              {/* Saved resumes */}
+              {savedResumes.length > 0 && (
                 <ul className="mt-2 flex flex-col gap-2">
-                  {persistedResumes.map((resume) => (
+                  {savedResumes.map((resume) => (
                     <SavedResumeItem
                       key={resume.id}
                       resume={resume}

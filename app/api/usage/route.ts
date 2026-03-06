@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const MAX_ATTEMPTS = 5;
 
-/** GET — return the current usage count for the authenticated user */
+/** GET — return the current usage count and subscription status */
 export async function GET() {
   let user;
   try {
@@ -27,7 +27,21 @@ export async function GET() {
     .eq("user_id", user.id)
     .single();
 
-  return NextResponse.json({ count: data?.count ?? 0, max: MAX_ATTEMPTS });
+  // Check subscription status
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("status, cancel_at_period_end, cancel_at")
+    .eq("user_id", user.id)
+    .in("status", ["active", "trialing"])
+    .single();
+
+  return NextResponse.json({
+    count: data?.count ?? 0,
+    max: MAX_ATTEMPTS,
+    subscribed: !!subscription,
+    cancelAtPeriodEnd: subscription?.cancel_at_period_end ?? false,
+    cancelAt: subscription?.cancel_at ?? null,
+  });
 }
 
 /** POST — increment usage count (called after a successful tailor) */
@@ -47,6 +61,16 @@ export async function POST() {
 
   const supabase = await createClient();
 
+  // Check if user has active subscription
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("status")
+    .eq("user_id", user.id)
+    .in("status", ["active", "trialing"])
+    .single();
+
+  const isSubscribed = !!subscription;
+
   // Get current count
   const { data: existing } = await supabase
     .from("usage")
@@ -56,7 +80,7 @@ export async function POST() {
 
   const currentCount = existing?.count ?? 0;
 
-  if (currentCount >= MAX_ATTEMPTS) {
+  if (!isSubscribed && currentCount >= MAX_ATTEMPTS) {
     return NextResponse.json(
       { error: "Usage limit reached", count: currentCount, max: MAX_ATTEMPTS },
       { status: 429 },
@@ -81,5 +105,9 @@ export async function POST() {
     );
   }
 
-  return NextResponse.json({ count: newCount, max: MAX_ATTEMPTS });
+  return NextResponse.json({
+    count: newCount,
+    max: MAX_ATTEMPTS,
+    subscribed: isSubscribed,
+  });
 }

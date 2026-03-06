@@ -36,6 +36,9 @@ export default function Page() {
   const MAX_ATTEMPTS = 5;
   const [usageCount, setUsageCount] = useState(0);
   const [usageLoaded, setUsageLoaded] = useState(false);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const [cancelAt, setCancelAt] = useState<string | null>(null);
 
   // Fetch usage count from DB when user changes
   useEffect(() => {
@@ -43,7 +46,11 @@ export default function Page() {
     setUsageLoaded(false);
     fetch("/api/usage")
       .then((res) => res.json())
-      .then((data: { count: number }) => setUsageCount(data.count))
+      .then((data: { count: number; subscribed?: boolean; cancelAt?: string | null }) => {
+        setUsageCount(data.count);
+        setIsSubscribed(!!data.subscribed);
+        setCancelAt(data.cancelAt ?? null);
+      })
       .catch(() => {})
       .finally(() => setUsageLoaded(true));
   }, [user]);
@@ -59,6 +66,19 @@ export default function Page() {
   }, []);
 
   const attemptsLeft = MAX_ATTEMPTS - usageCount;
+
+  const handleUpgrade = useCallback(async () => {
+    setIsUpgrading(true);
+    try {
+      const res = await fetch("/api/stripe/checkout", { method: "POST" });
+      const data = (await res.json()) as { url?: string };
+      if (data.url) window.location.href = data.url;
+    } catch {
+      setError("Failed to start checkout");
+    } finally {
+      setIsUpgrading(false);
+    }
+  }, []);
 
   const handleTailor = useCallback(async () => {
     const jobDescription = jobDescriptionRef.current;
@@ -217,6 +237,8 @@ export default function Page() {
               user={user}
               usageCount={usageCount}
               maxAttempts={MAX_ATTEMPTS}
+              isSubscribed={isSubscribed}
+              cancelAt={cancelAt}
             />
           )}
           <ThemeToggle />
@@ -254,20 +276,25 @@ export default function Page() {
             <SignInButton />
           ) : (
             <div className="flex items-center gap-3">
-              <Button
-                size="lg"
-                className="flex-1"
-                onClick={handleTailor}
-                disabled={
-                  isLoading || authLoading || !usageLoaded || attemptsLeft <= 0
-                }
-              >
-                {attemptsLeft <= 0
-                  ? "Limit reached"
-                  : isLoading
-                    ? "Tailoring..."
-                    : "Tailor Resume"}
-              </Button>
+              {!isSubscribed && attemptsLeft <= 0 ? (
+                <Button
+                  size="lg"
+                  className="flex-1"
+                  onClick={handleUpgrade}
+                  disabled={isUpgrading}
+                >
+                  {isUpgrading ? "Redirecting..." : "Upgrade to Pro — $5/mo"}
+                </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="flex-1"
+                  onClick={handleTailor}
+                  disabled={isLoading || authLoading || !usageLoaded}
+                >
+                  {isLoading ? "Tailoring..." : "Tailor Resume"}
+                </Button>
+              )}
 
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs whitespace-nowrap">

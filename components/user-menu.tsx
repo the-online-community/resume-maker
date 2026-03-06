@@ -15,10 +15,14 @@ export function UserMenu({
   user,
   usageCount,
   maxAttempts,
+  isSubscribed,
+  cancelAt,
 }: {
   user: User;
   usageCount: number;
   maxAttempts: number;
+  isSubscribed: boolean;
+  cancelAt: string | null;
 }) {
   const email = user.email || "";
   const fullName =
@@ -34,6 +38,12 @@ export function UserMenu({
     window.location.reload();
   };
 
+  const handleManagePlan = async () => {
+    const res = await fetch("/api/stripe/portal", { method: "POST" });
+    const data = (await res.json()) as { url?: string };
+    if (data.url) window.location.href = data.url;
+  };
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -45,17 +55,25 @@ export function UserMenu({
             <AvatarImage src={avatarUrl} alt={email} />
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
           </Avatar>
-          {/* Mini progress bar with count */}
+          {/* Subscription badge or usage progress */}
           <div className="hidden sm:block">
-            <p className="text-muted-foreground/80 text-[10px] leading-none">
-              {usageCount}/{maxAttempts} attempts
-            </p>
-            <div className="bg-muted mt-1 h-1.5 w-16 overflow-hidden rounded-full">
-              <div
-                className="bg-primary h-full rounded-full transition-all duration-500"
-                style={{ width: `${progress}%` }}
-              />
-            </div>
+            {isSubscribed ? (
+              <p className="text-[10px] font-semibold leading-none text-violet-500">
+                Pro
+              </p>
+            ) : (
+              <>
+                <p className="text-muted-foreground/80 text-[10px] leading-none">
+                  {usageCount}/{maxAttempts} attempts
+                </p>
+                <div className="bg-muted mt-1 h-1.5 w-16 overflow-hidden rounded-full">
+                  <div
+                    className="bg-primary h-full rounded-full transition-all duration-500"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </>
+            )}
           </div>
         </button>
       </PopoverTrigger>
@@ -66,6 +84,48 @@ export function UserMenu({
           )}
           <p className="text-muted-foreground text-xs">{email}</p>
         </div>
+        {/* Plan details */}
+        <div className="border-t px-2 py-3">
+          {isSubscribed ? (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">
+                Pro Plan{" "}
+                <span className="text-violet-500">· $5/mo</span>
+              </p>
+              {cancelAt ? (
+                <p className="text-[11px] text-amber-500">
+                  Cancels on{" "}
+                  {new Date(cancelAt).toLocaleDateString("en-US", {
+                    month: "short",
+                    day: "numeric",
+                    year: "numeric",
+                  })}
+                </p>
+              ) : (
+                <p className="text-muted-foreground text-[11px]">
+                  Unlimited resume tailoring
+                </p>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-xs font-medium">Free Plan</p>
+              <p className="text-muted-foreground text-[11px]">
+                {usageCount}/{maxAttempts} resumes used
+              </p>
+            </div>
+          )}
+        </div>
+        {isSubscribed && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            onClick={handleManagePlan}
+          >
+            Manage plan
+          </Button>
+        )}
         <Button
           variant="ghost"
           size="sm"

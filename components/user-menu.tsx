@@ -51,7 +51,7 @@ export function UserMenu({
           type="button"
           className="hover:bg-muted flex cursor-pointer items-center gap-2 p-2 transition-colors"
         >
-          <Avatar className="h-7 w-7">
+          <Avatar key={avatarUrl} className="h-7 w-7">
             <AvatarImage src={avatarUrl} alt={email} />
             <AvatarFallback className="text-xs">{initials}</AvatarFallback>
           </Avatar>

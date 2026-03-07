@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const origin = new URL(request.url).origin;
   const supabase = await createClient();
   const {
     data: { user },
@@ -36,8 +37,8 @@ export async function POST() {
     line_items: [
       { price: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID!, quantity: 1 },
     ],
-    success_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/?upgraded=true`,
-    cancel_url: `${process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"}/`,
+    success_url: `${origin}/?upgraded=true`,
+    cancel_url: `${origin}/`,
     metadata: { supabase_user_id: user.id },
     subscription_data: { metadata: { supabase_user_id: user.id } },
   });

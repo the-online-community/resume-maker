@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 import { stripe } from "@/lib/stripe";
 import { createClient } from "@/lib/supabase/server";
 
-export async function POST() {
+export async function POST(request: Request) {
+  const origin = new URL(request.url).origin;
   const supabase = await createClient();
   const {
     data: { user },
@@ -28,7 +29,7 @@ export async function POST() {
 
   const session = await stripe.billingPortal.sessions.create({
     customer: sub.stripe_customer_id,
-    return_url: process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000",
+    return_url: origin,
   });
 
   return NextResponse.json({ url: session.url });

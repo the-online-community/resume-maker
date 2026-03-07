@@ -1,5 +1,7 @@
 "use client";
 
+import { useCallback, useRef } from "react";
+
 import { AiSectionEditor } from "@/components/resume/ai-section-editor";
 import { LinkEditPopover, toUrl } from "@/components/resume/link-edit-popover";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,6 +14,31 @@ interface ResumeContentProps {
   jobDescription?: string;
 }
 
+/**
+ * Format experience text as HTML for contentEditable.
+ * Lines starting with bullets become plain divs; others are bolded.
+ */
+function experienceToHtml(text: string) {
+  return text
+    .split("\n")
+    .map((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return "<br>";
+      const isBullet = /^[•\-*]/.test(trimmed);
+      return isBullet
+        ? `<div>${escapeHtml(line)}</div>`
+        : `<div style="font-weight:600">${escapeHtml(line)}</div>`;
+    })
+    .join("");
+}
+
+function escapeHtml(str: string) {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /** The actual resume sections — rendered once per visual page (cheap, just text). */
 export function ResumeContent({
   placeholders,
@@ -21,10 +48,14 @@ export function ResumeContent({
 }: ResumeContentProps) {
   const editable = !isStreaming && !!onEdit;
 
+  // Track whether the last change came from the user (to skip overwriting their edits)
+  const userEditedRef = useRef(false);
+
   const handleBlur = (key: string) => (e: React.FocusEvent<HTMLElement>) => {
     // Normalize: collapse 3+ consecutive newlines into 2 (prevents accumulation from div/br rendering)
     const text = e.currentTarget.innerText.trim().replace(/\n{3,}/g, "\n\n");
     if (text !== placeholders[key]) {
+      userEditedRef.current = true;
       onEdit?.(key, text);
     }
   };
@@ -33,6 +64,23 @@ export function ResumeContent({
     onEdit?.(key, label);
     onEdit?.(`${key}_URL`, url);
   };
+
+  /**
+   * Ref callback for the EXPERIENCE contentEditable div.
+   * Sets innerHTML directly (once) so React never manages children inside it.
+   */
+  const experienceRef = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) return;
+      // Only update innerHTML when the change came from outside (AI, streaming)
+      if (userEditedRef.current) {
+        userEditedRef.current = false;
+        return;
+      }
+      node.innerHTML = experienceToHtml(placeholders.EXPERIENCE || "");
+    },
+    [placeholders.EXPERIENCE],
+  );
 
   return (
     <>
@@ -206,25 +254,12 @@ export function ResumeContent({
           <section className="resume-section">
             <h2>Experience</h2>
             <div
+              ref={experienceRef}
               contentEditable={editable}
               suppressContentEditableWarning
               onBlur={handleBlur("EXPERIENCE")}
               className={editable ? "resume-editable" : undefined}
-            >
-              {placeholders.EXPERIENCE.split("\n").map((line, i) => {
-                const trimmed = line.trim();
-                if (!trimmed) return <br key={i} />;
-                const isBullet = /^[•\-*]/.test(trimmed);
-                return (
-                  <div
-                    key={i}
-                    style={isBullet ? undefined : { fontWeight: 600 }}
-                  >
-                    {line}
-                  </div>
-                );
-              })}
-            </div>
+            />
           </section>
         </AiSectionEditor>
       )}
@@ -327,3 +362,4 @@ export function ResumeContent({
     </>
   );
 }
+

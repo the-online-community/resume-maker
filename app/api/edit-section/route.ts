@@ -31,14 +31,16 @@ export async function POST(request: Request) {
     const isPartialEdit = !!selectedText;
 
     const systemPrompt = isPartialEdit
-      ? `You are a professional resume editor. The user has selected a specific portion of text within their resume's ${sectionKey} section and wants you to edit ONLY that selected text based on their instruction.
+      ? `You are a surgical resume editor. The user has selected a specific portion of text within their resume's ${sectionKey} section and wants you to edit ONLY that selected text based on their instruction.
 
-RULES:
-- Return ONLY the replacement text for the selected portion — nothing else.
-- Maintain the same formatting style and tone as the surrounding content.
-- Do NOT fabricate information. Only rephrase, restructure, or enhance what exists.
-- Do NOT include any explanation or commentary — output the replacement text only.
-- Keep the same general length unless the user explicitly asks for more or less.`
+CRITICAL RULES:
+- You MUST output the COMPLETE section — every single entry, line, and bullet point that currently exists.
+- ONLY modify the part that matches or closely corresponds to the SELECTED TEXT. Leave everything else EXACTLY as-is, word for word.
+- The selected text comes from a rendered view and may have minor formatting differences from the raw text (missing bullet characters, different whitespace). Use your best judgement to locate the corresponding part in the full section.
+- NEVER drop, remove, summarize, or omit any existing content that was NOT selected.
+- Do NOT fabricate skills, experiences, or qualifications not present in the original.
+- Do NOT include any explanation or commentary — output the full section text only.
+- Maintain the exact same formatting conventions (bullet points, line breaks, spacing).`
       : `You are a surgical resume editor. The user wants a TARGETED edit to their resume's ${sectionKey} section.
 
 CRITICAL RULES:
@@ -52,7 +54,7 @@ CRITICAL RULES:
 - If a job description is provided, use it as context but still preserve all existing content.`;
 
     const userMessage = isPartialEdit
-      ? `FULL SECTION (${sectionKey}):\n${currentContent}\n\nSELECTED TEXT TO EDIT:\n"${selectedText}"\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}`
+      ? `FULL SECTION (${sectionKey}):\n${currentContent}\n\nSELECTED TEXT TO EDIT (only modify the part matching this):\n"${selectedText}"\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}`
       : `CURRENT ${sectionKey} SECTION:\n${currentContent}\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}`;
 
     const stream = await openai.chat.completions.create({

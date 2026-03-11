@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import {
   Popover,
@@ -38,6 +45,26 @@ function SparkleIcon({ className }: { className?: string }) {
   );
 }
 
+// ── Quick-action presets ──
+
+const QUICK_ACTIONS = [
+  {
+    label: "Make stronger",
+    instruction:
+      "Make this more impactful with stronger action verbs and quantified achievements",
+  },
+  {
+    label: "Make shorter",
+    instruction:
+      "Make this more concise while keeping the key information",
+  },
+  {
+    label: "Add stats",
+    instruction:
+      "Add realistic metrics and quantified results to strengthen this",
+  },
+] as const;
+
 export function AiSectionEditor({
   sectionKey,
   currentContent,
@@ -56,6 +83,12 @@ export function AiSectionEditor({
   const sectionRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
 
+  // ── Right-click context menu state ──
+  const [contextMenuOpen, setContextMenuOpen] = useState(false);
+  const [contextMenuPos, setContextMenuPos] = useState({ x: 0, y: 0 });
+  const [contextMenuText, setContextMenuText] = useState("");
+  const [showCustomPrompt, setShowCustomPrompt] = useState(false);
+
   // Detect text selection within this section
   useEffect(() => {
     if (!editable) return;
@@ -67,7 +100,6 @@ export function AiSectionEditor({
         return;
       }
 
-      // Check if selection is within this section
       const range = selection.getRangeAt(0);
       if (sectionRef.current.contains(range.commonAncestorContainer)) {
         setSelectedText(selection.toString().trim());
@@ -81,69 +113,90 @@ export function AiSectionEditor({
       document.removeEventListener("selectionchange", handleSelection);
   }, [editable]);
 
-  const handleSubmit = useCallback(async () => {
+  // ── Right-click handler ──
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed) return;
+
+      const range = selection.getRangeAt(0);
+      if (!sectionRef.current?.contains(range.commonAncestorContainer)) return;
+
+      const text = selection.toString().trim();
+      if (!text) return;
+
+      e.preventDefault();
+      setContextMenuText(text);
+      setContextMenuPos({ x: e.clientX, y: e.clientY });
+      setShowCustomPrompt(false);
+      setPrompt("");
+      setContextMenuOpen(true);
+    },
+    [],
+  );
+
+  // ── Submit AI edit ──
+  const submitEdit = useCallback(
+    async (instruction: string, textToEdit: string) => {
+      setContextMenuOpen(false);
+      setShowCustomPrompt(false);
+      setIsStreaming(true);
+      setStreamedContent("");
+      setIsDone(false);
+      setIsOpen(true);
+      setSelectedText(textToEdit);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+
+      try {
+        const res = await fetch("/api/edit-section", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sectionKey,
+            currentContent,
+            userInstruction: instruction,
+            selectedText: textToEdit || undefined,
+            jobDescription: jobDescription || undefined,
+          }),
+          signal: controller.signal,
+        });
+
+        if (!res.ok) throw new Error("Failed to edit section");
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          setStreamedContent(accumulated);
+        }
+
+        setIsDone(true);
+      } catch (err) {
+        if ((err as Error).name !== "AbortError") {
+          console.error("AI edit failed:", err);
+        }
+      } finally {
+        setIsStreaming(false);
+        abortRef.current = null;
+      }
+    },
+    [sectionKey, currentContent, jobDescription],
+  );
+
+  // ── Section-level edit (from hover button) ──
+  const handleSectionSubmit = useCallback(async () => {
     if (!prompt.trim() || isStreaming) return;
-
-    setIsStreaming(true);
-    setStreamedContent("");
-    setIsDone(false);
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    try {
-      const res = await fetch("/api/edit-section", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sectionKey,
-          currentContent,
-          userInstruction: prompt.trim(),
-          selectedText: selectedText || undefined,
-          jobDescription: jobDescription || undefined,
-        }),
-        signal: controller.signal,
-      });
-
-      if (!res.ok) throw new Error("Failed to edit section");
-
-      const reader = res.body!.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        accumulated += decoder.decode(value, { stream: true });
-        setStreamedContent(accumulated);
-      }
-
-      setIsDone(true);
-    } catch (err) {
-      if ((err as Error).name !== "AbortError") {
-        console.error("AI edit failed:", err);
-      }
-    } finally {
-      setIsStreaming(false);
-      abortRef.current = null;
-    }
-  }, [
-    prompt,
-    isStreaming,
-    sectionKey,
-    currentContent,
-    selectedText,
-    jobDescription,
-  ]);
+    await submitEdit(prompt.trim(), selectedText);
+  }, [prompt, isStreaming, selectedText, submitEdit]);
 
   const handleAccept = () => {
-    if (selectedText && streamedContent) {
-      // For partial edits, replace the selected text within the full content
-      const newContent = currentContent.replace(selectedText, streamedContent);
-      onAccept(newContent);
-    } else {
-      onAccept(streamedContent);
-    }
+    onAccept(streamedContent);
     resetState();
   };
 
@@ -158,6 +211,8 @@ export function AiSectionEditor({
     setIsDone(false);
     setSelectedText("");
     setIsStreaming(false);
+    setContextMenuOpen(false);
+    setShowCustomPrompt(false);
     if (abortRef.current) {
       abortRef.current.abort();
       abortRef.current = null;
@@ -166,7 +221,7 @@ export function AiSectionEditor({
 
   const handleOpenChange = (open: boolean) => {
     if (!open) {
-      if (isStreaming) return; // Don't close while streaming
+      if (isStreaming) return;
       resetState();
     }
     setIsOpen(open);
@@ -180,18 +235,18 @@ export function AiSectionEditor({
       className="ai-section-wrapper"
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onContextMenu={handleContextMenu}
     >
       {children}
 
-      {/* Hover AI button */}
+      {/* Hover AI button — section-level editing */}
       <Popover open={isOpen} onOpenChange={handleOpenChange}>
         <PopoverTrigger asChild>
           <button
             className="ai-section-btn"
             style={{
-              opacity: isHovered || isOpen || selectedText ? 1 : 0,
-              pointerEvents:
-                isHovered || isOpen || selectedText ? "auto" : "none",
+              opacity: isHovered || isOpen ? 1 : 0,
+              pointerEvents: isHovered || isOpen ? "auto" : "none",
             }}
             title="Edit with AI"
           >
@@ -242,7 +297,7 @@ export function AiSectionEditor({
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSubmit();
+                    handleSectionSubmit();
                   }
                 }}
                 autoFocus
@@ -250,7 +305,7 @@ export function AiSectionEditor({
               <Button
                 size="sm"
                 className="h-8 px-3"
-                onClick={handleSubmit}
+                onClick={handleSectionSubmit}
                 disabled={isStreaming || !prompt.trim()}
               >
                 {isStreaming ? "..." : "→"}
@@ -280,6 +335,109 @@ export function AiSectionEditor({
           )}
         </PopoverContent>
       </Popover>
+
+      {/* ── Right-click context menu (shadcn DropdownMenu) ── */}
+      <DropdownMenu
+        open={contextMenuOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            setContextMenuOpen(false);
+            setShowCustomPrompt(false);
+          }
+        }}
+      >
+        {/* Virtual trigger positioned at the right-click location */}
+        <div
+          style={{
+            position: "fixed",
+            left: contextMenuPos.x,
+            top: contextMenuPos.y,
+            width: 0,
+            height: 0,
+            pointerEvents: "none",
+          }}
+          data-slot="dropdown-menu-virtual-trigger"
+        >
+          {/* The DropdownMenuContent needs an anchor — this invisible div provides it */}
+        </div>
+
+        <DropdownMenuContent
+          side="bottom"
+          align="start"
+          className="min-w-[200px]"
+          style={{
+            position: "fixed",
+            left: contextMenuPos.x,
+            top: contextMenuPos.y,
+          }}
+          onCloseAutoFocus={(e) => e.preventDefault()}
+        >
+          {/* Selected text preview */}
+          <DropdownMenuLabel className="font-normal">
+            <span className="flex items-center gap-1.5">
+              <SparkleIcon className="h-3 w-3 shrink-0" />
+              <span className="truncate">
+                &ldquo;{contextMenuText.slice(0, 40)}
+                {contextMenuText.length > 40 ? "…" : ""}&rdquo;
+              </span>
+            </span>
+          </DropdownMenuLabel>
+
+          <DropdownMenuSeparator />
+
+          {/* Quick actions */}
+          {QUICK_ACTIONS.map((action) => (
+            <DropdownMenuItem
+              key={action.label}
+              onClick={() => submitEdit(action.instruction, contextMenuText)}
+            >
+              {action.label}
+            </DropdownMenuItem>
+          ))}
+
+          <DropdownMenuSeparator />
+
+          {/* Custom prompt */}
+          {!showCustomPrompt ? (
+            <DropdownMenuItem
+              onSelect={(e) => {
+                e.preventDefault();
+                setShowCustomPrompt(true);
+              }}
+            >
+              Custom prompt…
+            </DropdownMenuItem>
+          ) : (
+            <div className="flex gap-1 p-1.5" onClick={(e) => e.stopPropagation()}>
+              <Input
+                value={prompt}
+                onChange={(e) => setPrompt(e.target.value)}
+                placeholder="Your instruction..."
+                className="h-7 text-xs"
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" && prompt.trim()) {
+                    e.preventDefault();
+                    submitEdit(prompt.trim(), contextMenuText);
+                  }
+                }}
+                autoFocus
+              />
+              <Button
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => {
+                  if (prompt.trim())
+                    submitEdit(prompt.trim(), contextMenuText);
+                }}
+                disabled={!prompt.trim()}
+              >
+                →
+              </Button>
+            </div>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
     </div>
   );
 }

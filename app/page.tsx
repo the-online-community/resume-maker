@@ -1,5 +1,11 @@
 "use client";
 
+import {
+  Loading03Icon,
+  Mic01Icon,
+  PauseIcon,
+} from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 
@@ -8,9 +14,24 @@ import ResumePreview from "@/components/resume/resume-preview";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { UserMenu } from "@/components/user-menu";
+import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import { useUser } from "@/hooks/use-user";
-import { getAllResumes } from "@/lib/resume/resume-store";
+import {
+  getAllResumes,
+  getAllSavedResumes,
+  saveGeneratedResume,
+  type SavedResumeEntry,
+} from "@/lib/resume/resume-store";
 import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
 import { DEFAULT_TEMPLATE } from "@/lib/resume/templates";
 
@@ -32,6 +53,15 @@ export default function Page() {
   const [targetPages, setTargetPages] = useState(1);
   const [hasJobDescription, setHasJobDescription] = useState(false);
   const editorResetRef = useRef<(() => void) | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
+  const [promptDraft, setPromptDraft] = useState("");
+
+  // Saved generated resumes (lifted from dropzone for AI context)
+  const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
+    SavedResumeEntry[]
+  >([]);
 
   const MAX_ATTEMPTS = 5;
   const [usageCount, setUsageCount] = useState(0);
@@ -39,6 +69,11 @@ export default function Page() {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [cancelAt, setCancelAt] = useState<string | null>(null);
+
+  // Load saved generated resumes on mount
+  useEffect(() => {
+    getAllSavedResumes().then(setSavedGeneratedResumes);
+  }, []);
 
   // Fetch usage count from DB when user changes
   useEffect(() => {
@@ -94,11 +129,11 @@ export default function Page() {
     setPlaceholders(null);
 
     try {
-      // 1. Get saved resumes from IndexedDB
+      // 1. Get uploaded resumes from IndexedDB
       const savedResumes = await getAllResumes();
       let resumeTexts: string[] = [];
 
-      // 2. If resumes exist, parse them on the server
+      // 2. If uploaded resumes exist, parse them on the server
       if (savedResumes.length > 0) {
         const formData = new FormData();
         for (const resume of savedResumes) {
@@ -121,7 +156,24 @@ export default function Page() {
         resumeTexts = parsedResumes.map((r) => r.text);
       }
 
-      // 3. Tailor with AI (streamed) — if no resumes, pass user info for generation
+      // 3. Add saved (generated) resume texts as additional context
+      for (const savedResume of savedGeneratedResumes) {
+        const p = savedResume.placeholders;
+        const parts: string[] = [];
+        if (p.FULL_NAME) parts.push(`Name: ${p.FULL_NAME}`);
+        if (p.JOB_TITLE) parts.push(`Title: ${p.JOB_TITLE}`);
+        if (p.EMAIL) parts.push(`Email: ${p.EMAIL}`);
+        if (p.PHONE) parts.push(`Phone: ${p.PHONE}`);
+        if (p.LOCATION) parts.push(`Location: ${p.LOCATION}`);
+        if (p.SUMMARY) parts.push(`Summary:\n${p.SUMMARY}`);
+        if (p.EXPERIENCE) parts.push(`Experience:\n${p.EXPERIENCE}`);
+        if (p.EDUCATION) parts.push(`Education:\n${p.EDUCATION}`);
+        if (p.SKILLS) parts.push(`Skills: ${p.SKILLS}`);
+        if (p.CERTIFICATIONS) parts.push(`Certifications: ${p.CERTIFICATIONS}`);
+        resumeTexts.push(parts.join("\n\n"));
+      }
+
+      // 4. Tailor with AI (streamed) — if no resumes, pass user info for generation
       const tailorRes = await fetch("/api/tailor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,6 +184,7 @@ export default function Page() {
           targetPages,
           userName: user?.user_metadata?.full_name || user?.user_metadata?.name,
           userEmail: user?.email,
+          customPrompt: customPrompt || undefined,
         }),
       });
 
@@ -190,7 +243,7 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage, user]);
+  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt]);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
@@ -224,6 +277,25 @@ export default function Page() {
       printWindow.print();
       printWindow.close();
     };
+  }, [placeholders]);
+
+  const handleSaveResume = useCallback(async () => {
+    if (!placeholders) return;
+
+    setIsSaving(true);
+    try {
+      const name = placeholders.FULL_NAME
+        ? `${placeholders.FULL_NAME} — ${placeholders.JOB_TITLE || "Resume"}`
+        : `Resume — ${new Date().toLocaleDateString()}`;
+
+      const entry = await saveGeneratedResume(name, placeholders);
+      setSavedGeneratedResumes((prev) => [...prev, entry]);
+    } catch {
+      setError("Failed to save resume");
+    } finally {
+      // Show "Saved!" briefly, then reset
+      setTimeout(() => setIsSaving(false), 1500);
+    }
   }, [placeholders]);
 
   return (
@@ -296,6 +368,18 @@ export default function Page() {
                 </Button>
               )}
 
+              <Button
+                size="lg"
+                variant={customPrompt ? "default" : "outline"}
+                className="shrink-0"
+                onClick={() => {
+                  setPromptDraft(customPrompt);
+                  setPromptDialogOpen(true);
+                }}
+              >
+                {customPrompt ? "Prompt ✓" : "Add Prompt"}
+              </Button>
+
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs whitespace-nowrap">
                   Pages
@@ -327,8 +411,63 @@ export default function Page() {
             </div>
           )}
 
+          {/* Custom Prompt Dialog */}
+          <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
+            <DialogContent className="sm:max-w-md">
+              <DialogHeader>
+                <DialogTitle>Custom Prompt</DialogTitle>
+                <DialogDescription>
+                  Add extra instructions for the AI when generating your resume.
+                  For example: &quot;Focus on leadership experience&quot; or
+                  &quot;Use a more formal tone&quot;.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="relative">
+                <Textarea
+                  value={promptDraft}
+                  onChange={(e) => setPromptDraft(e.target.value)}
+                  placeholder="e.g. Focus on backend engineering skills, emphasize cloud experience..."
+                  className="min-h-32 pr-10"
+                />
+                <VoiceInputButton
+                  onTranscript={(text) =>
+                    setPromptDraft((prev) =>
+                      prev ? `${prev} ${text}` : text,
+                    )
+                  }
+                />
+              </div>
+              <DialogFooter className="gap-2">
+                {customPrompt && (
+                  <Button
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => {
+                      setCustomPrompt("");
+                      setPromptDraft("");
+                      setPromptDialogOpen(false);
+                    }}
+                  >
+                    Clear
+                  </Button>
+                )}
+                <Button
+                  onClick={() => {
+                    setCustomPrompt(promptDraft.trim());
+                    setPromptDialogOpen(false);
+                  }}
+                >
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
           <div>
-            <ResumeDropzone />
+            <ResumeDropzone
+              savedGeneratedResumes={savedGeneratedResumes}
+              onSavedResumesChange={setSavedGeneratedResumes}
+            />
           </div>
         </div>
 
@@ -341,6 +480,8 @@ export default function Page() {
             isLoading={isLoading}
             isStreaming={isStreaming}
             onDownloadPdf={handleDownloadPdf}
+            onSaveResume={handleSaveResume}
+            isSaving={isSaving}
             jobDescription={jobDescriptionRef.current}
             onPlaceholderChange={(key, value) =>
               setPlaceholders((prev) =>
@@ -351,5 +492,46 @@ export default function Page() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Voice Input Button ────────────────────────────────────────────────
+
+function VoiceInputButton({
+  onTranscript,
+}: {
+  onTranscript: (text: string) => void;
+}) {
+  const { isListening, isProcessing, isSupported, toggle } = useSpeechToText({
+    onTranscript,
+  });
+
+  if (!isSupported) return null;
+
+  const showLoading = isListening && isProcessing;
+
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      className={`absolute right-2 bottom-2 flex size-7 cursor-pointer items-center justify-center rounded-full transition-all ${
+        isListening
+          ? "bg-destructive text-white"
+          : "text-muted-foreground hover:text-foreground hover:bg-muted"
+      }`}
+      aria-label={isListening ? "Stop recording" : "Start voice input"}
+    >
+      {showLoading ? (
+        <HugeiconsIcon
+          icon={Loading03Icon}
+          className="size-3.5 animate-spin"
+        />
+      ) : (
+        <HugeiconsIcon
+          icon={isListening ? PauseIcon : Mic01Icon}
+          className="size-3.5"
+        />
+      )}
+    </button>
   );
 }

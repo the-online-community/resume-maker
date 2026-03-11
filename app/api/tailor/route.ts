@@ -7,6 +7,7 @@ interface TailorRequest {
   targetPages?: number;
   userName?: string;
   userEmail?: string;
+  customPrompt?: string;
 }
 
 export async function POST(request: Request) {
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
       targetPages = 1,
       userName,
       userEmail,
+      customPrompt,
     } = body;
 
     const hasResumes = resumeTexts && resumeTexts.length > 0;
@@ -40,7 +42,7 @@ export async function POST(request: Request) {
     });
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5-mini",
       stream: true,
       response_format: { type: "json_object" },
       messages: [
@@ -76,7 +78,7 @@ Guidelines for each field:
 - SKILLS: Comma-separated list of skills from the user's resume, ordered by relevance to the job description
 - CERTIFICATIONS: If present in the user's resume, list them. Otherwise empty string.
 
-Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.`
+Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`
             : `You are a professional resume writer. The user has NOT uploaded a resume. Your job is to generate a well-structured resume draft tailored to the given job description.
 
 You know the user's name${userEmail ? " and email" : ""}. Use this information and create a professional resume that:
@@ -108,7 +110,7 @@ Guidelines for each field:
 - SKILLS: Comma-separated list of skills from the job description requirements
 - CERTIFICATIONS: Empty string
 
-Keep all content professional and concise. Optimize for ATS compatibility.`,
+Keep all content professional and concise. Optimize for ATS compatibility.${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`,
         },
         {
           role: "user",
@@ -118,7 +120,7 @@ ${jobDescription}
 
 USER'S RESUME(S):
 ${resumeTexts.map((text, i) => `--- Resume ${i + 1} ---\n${text}`).join("\n\n")}
-
+${customPrompt ? `\nUSER'S ADDITIONAL INSTRUCTIONS:\n${customPrompt}\n` : ""}
 Generate the tailored resume data as JSON with these fields: ${placeholderList}`
             : `JOB DESCRIPTION:
 ${jobDescription}
@@ -126,7 +128,7 @@ ${jobDescription}
 USER INFO:
 - Name: ${userName || "[Your Name]"}
 - Email: ${userEmail || "[your.email@example.com]"}
-
+${customPrompt ? `\nUSER'S ADDITIONAL INSTRUCTIONS:\n${customPrompt}\n` : ""}
 Generate a resume draft as JSON with these fields: ${placeholderList}`,
         },
       ],

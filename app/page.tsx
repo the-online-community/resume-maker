@@ -92,6 +92,31 @@ export default function Page() {
     getAllSavedResumes().then(setSavedGeneratedResumes);
   }, []);
 
+  // Restore cached resume state from sessionStorage
+  useEffect(() => {
+    try {
+      const cached = sessionStorage.getItem("resume_cache");
+      if (cached) {
+        const { placeholders: p, title } = JSON.parse(cached);
+        if (p) setPlaceholders(p);
+        if (title) setResumeTitle(title);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cache resume state to sessionStorage on change
+  useEffect(() => {
+    if (placeholders) {
+      sessionStorage.setItem(
+        "resume_cache",
+        JSON.stringify({ placeholders, title: resumeTitle }),
+      );
+    }
+  }, [placeholders, resumeTitle]);
+
   // Load template settings when user changes
   useEffect(() => {
     fetch("/api/template-settings")
@@ -339,6 +364,23 @@ export default function Page() {
       <div className="mb-6 flex items-center justify-between lg:mb-8">
         <h1 className="font-mono text-lg font-bold sm:text-xl">Resume Maker</h1>
         <div className="flex items-center gap-2">
+          {placeholders && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs text-muted-foreground"
+              onClick={() => {
+                setPlaceholders(null);
+                setResumeTitle("Resume");
+                setHasJobDescription(false);
+                jobDescriptionRef.current = "";
+                editorResetRef.current?.();
+                sessionStorage.removeItem("resume_cache");
+              }}
+            >
+              Clear
+            </Button>
+          )}
           {user && (
             <UserMenu
               user={user}

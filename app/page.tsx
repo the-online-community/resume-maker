@@ -8,6 +8,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter } from "next/navigation";
 
 import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
@@ -48,6 +49,7 @@ const TextEditor = dynamic(() => import("@/components/text-editor"), {
 
 export default function Page() {
   const { user, loading: authLoading } = useUser();
+  const router = useRouter();
   const jobDescriptionRef = useRef("");
   const resumeRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -62,9 +64,11 @@ export default function Page() {
   const [hasJobDescription, setHasJobDescription] = useState(false);
   const editorResetRef = useRef<(() => void) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTracking, setIsTracking] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
+  const [resumeTitle, setResumeTitle] = useState("Resume");
 
   // Saved generated resumes (lifted from dropzone for AI context)
   const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
@@ -259,6 +263,19 @@ export default function Page() {
       pushPlaceholders(finalPlaceholders);
       setIsStreaming(false);
       incrementUsage();
+
+      // Extract company name from JD for the resume title
+      const jd = jobDescriptionRef.current;
+      const companyMatch = jd.match(
+        /(?:(?:at|@|for|join|about)\s+)([A-Z][A-Za-z0-9&'.\- ]{1,40})/,
+      );
+      if (companyMatch?.[1]) {
+        setResumeTitle(`Resume — ${companyMatch[1].trim()}`);
+      } else if (finalPlaceholders.JOB_TITLE) {
+        setResumeTitle(`Resume — ${finalPlaceholders.JOB_TITLE}`);
+      } else {
+        setResumeTitle("Resume");
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Something went wrong");
       setIsStreaming(false);
@@ -274,9 +291,7 @@ export default function Page() {
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const title = placeholders?.FULL_NAME
-      ? `Resume - ${placeholders.FULL_NAME}`
-      : "Resume";
+    const title = resumeTitle || "Resume";
 
     printWindow.document.write(`
       <!DOCTYPE html>
@@ -299,16 +314,14 @@ export default function Page() {
       printWindow.print();
       printWindow.close();
     };
-  }, [placeholders]);
+  }, [resumeTitle]);
 
   const handleSaveResume = useCallback(async () => {
     if (!placeholders) return;
 
     setIsSaving(true);
     try {
-      const name = placeholders.FULL_NAME
-        ? `${placeholders.FULL_NAME} — ${placeholders.JOB_TITLE || "Resume"}`
-        : `Resume — ${new Date().toLocaleDateString()}`;
+      const name = resumeTitle || "Resume";
 
       const entry = await saveGeneratedResume(name, placeholders);
       setSavedGeneratedResumes((prev) => [...prev, entry]);
@@ -318,7 +331,7 @@ export default function Page() {
       // Show "Saved!" briefly, then reset
       setTimeout(() => setIsSaving(false), 1500);
     }
-  }, [placeholders]);
+  }, [placeholders, resumeTitle]);
 
   return (
     <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
@@ -528,7 +541,49 @@ export default function Page() {
 
         {/* Right panel */}
         <div className="w-full">
-          <h2 className="mb-4 font-mono">Resume</h2>
+          <div className="mb-4 flex items-center gap-2">
+            {placeholders ? (
+              <>
+                <input
+                  type="text"
+                  value={resumeTitle}
+                  onChange={(e) => setResumeTitle(e.target.value)}
+                  className="flex-1 bg-transparent font-mono text-base outline-none focus:border-b focus:border-foreground/20"
+                  placeholder="Resume title..."
+                />
+                {user && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 text-xs"
+                    disabled={isTracking}
+                    onClick={async () => {
+                      setIsTracking(true);
+                      // Extract company and position from resumeTitle
+                      const parts = resumeTitle.split("\u2014").map((s) => s.trim());
+                      const position = placeholders.JOB_TITLE || parts[0] || "";
+                      const company = parts[1] || "";
+
+                      try {
+                        await fetch("/api/applications", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ position, company, resume_data: placeholders }),
+                        });
+                        router.push("/applications");
+                      } catch {
+                        setIsTracking(false);
+                      }
+                    }}
+                  >
+                    {isTracking ? "Tracking..." : "Track Application"}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <h2 className="font-mono">Resume</h2>
+            )}
+          </div>
           <ResumePreview
             ref={resumeRef}
             placeholders={placeholders}

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import type { User } from "@supabase/supabase-js";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -126,6 +127,14 @@ export function UserMenu({
             Manage plan
           </Button>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          asChild
+        >
+          <Link href="/applications">My Applications</Link>
+        </Button>
         <Button
           variant="ghost"
           size="sm"

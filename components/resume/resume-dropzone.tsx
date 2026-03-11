@@ -17,7 +17,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import {
   Dropzone,
@@ -50,11 +49,13 @@ import { cn } from "@/lib/utils";
 interface ResumeDropzoneProps {
   savedGeneratedResumes: SavedResumeEntry[];
   onSavedResumesChange: (resumes: SavedResumeEntry[]) => void;
+  onLoadResume?: (placeholders: Record<string, string>) => void;
 }
 
 export default function ResumeDropzone({
   savedGeneratedResumes,
   onSavedResumesChange,
+  onLoadResume,
 }: ResumeDropzoneProps) {
   const [uploadedResumes, setUploadedResumes] = useState<ResumeEntry[]>([]);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
@@ -245,6 +246,7 @@ export default function ResumeDropzone({
                           key={resume.id}
                           resume={resume}
                           onRemove={handleRemoveSaved}
+                          onLoad={onLoadResume}
                         />
                       ))}
                     </ul>
@@ -276,10 +278,7 @@ export default function ResumeDropzone({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={() => setClearDialogOpen(false)}
-            >
+            <Button variant="outline" onClick={() => setClearDialogOpen(false)}>
               Cancel
             </Button>
             <Button
@@ -377,9 +376,11 @@ function UploadedResumeItem({
 function SavedGeneratedResumeItem({
   resume,
   onRemove,
+  onLoad,
 }: {
   resume: SavedResumeEntry;
   onRemove: (id: string) => void;
+  onLoad?: (placeholders: Record<string, string>) => void;
 }) {
   const date = new Date(resume.savedAt);
   const dateStr = date.toLocaleDateString(undefined, {
@@ -390,7 +391,11 @@ function SavedGeneratedResumeItem({
   });
 
   return (
-    <li className="flex items-center gap-3 border px-2 py-2">
+    <li
+      className="hover:bg-accent flex cursor-pointer items-center gap-3 border px-2 py-2 transition-colors"
+      onClick={() => onLoad?.(resume.placeholders)}
+      title="Click to load this resume"
+    >
       <div className="flex flex-1 items-start gap-3 overflow-hidden">
         <div className="mt-1.5 flex size-9 shrink-0 items-start justify-center">
           <HugeiconsIcon icon={NoteIcon} className="text-primary size-4" />
@@ -402,7 +407,10 @@ function SavedGeneratedResumeItem({
       </div>
       <button
         type="button"
-        onClick={() => onRemove(resume.id)}
+        onClick={(e) => {
+          e.stopPropagation();
+          onRemove(resume.id);
+        }}
         className="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer p-1 transition-colors"
       >
         <HugeiconsIcon icon={Cancel01Icon} className="size-4" />

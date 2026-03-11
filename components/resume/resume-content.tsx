@@ -1,9 +1,16 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { AiSectionEditor } from "@/components/resume/ai-section-editor";
 import { LinkEditPopover, toUrl } from "@/components/resume/link-edit-popover";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RESUME_CSS } from "@/lib/resume/resume-styles";
 import {
@@ -15,6 +22,7 @@ interface ResumeContentProps {
   placeholders: Record<string, string>;
   isStreaming?: boolean;
   onEdit?: (key: string, value: string) => void;
+  onBatchEdit?: (updates: Record<string, string>) => void;
   jobDescription?: string;
   templateSettings?: TemplateSettings;
 }
@@ -140,6 +148,109 @@ function HeaderText({
   );
 }
 
+// ── Add new header item ──
+
+function AddHeaderItem({
+  placeholders,
+  onAdd,
+}: {
+  placeholders: Record<string, string>;
+  onAdd: (key: string, value: string, url?: string) => void;
+}) {
+  const [addingText, setAddingText] = useState(false);
+  const [textValue, setTextValue] = useState("");
+
+  const getNextKey = () => {
+    let i = 1;
+    while (placeholders[`CUSTOM_${i}`]) i++;
+    return `CUSTOM_${i}`;
+  };
+
+  const handleAddLink = () => {
+    const key = getNextKey();
+    onAdd(key, "Link", "https://");
+  };
+
+  const handleAddText = () => {
+    if (!textValue.trim()) return;
+    const key = getNextKey();
+    onAdd(key, textValue.trim());
+    setTextValue("");
+    setAddingText(false);
+  };
+
+  if (addingText) {
+    return (
+      <span className="resume-contact-item">
+        <span className="inline-flex items-center gap-1">
+          <Input
+            value={textValue}
+            onChange={(e) => setTextValue(e.target.value)}
+            placeholder="Text value"
+            className="h-5 w-24 border-none bg-transparent px-0 text-inherit shadow-none outline-none focus-visible:ring-0"
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleAddText();
+              }
+              if (e.key === "Escape") {
+                setTextValue("");
+                setAddingText(false);
+              }
+            }}
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={handleAddText}
+            className="cursor-pointer text-green-600 hover:text-green-700"
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setTextValue("");
+              setAddingText(false);
+            }}
+            className="text-muted-foreground hover:text-foreground cursor-pointer"
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+          >
+            ✕
+          </button>
+        </span>
+      </span>
+    );
+  }
+
+  return (
+    <span className="resume-contact-item">
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <button
+            type="button"
+            className="text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+            style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            title="Add header item"
+          >
+            +
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="min-w-[120px]">
+          <DropdownMenuItem onClick={() => setAddingText(true)}>
+            Add Text
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={handleAddLink}>
+            Add Link
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </span>
+  );
+}
+
 // ── Link fields vs text-only fields ──
 
 const LINK_FIELDS = new Set(["EMAIL", "LINKEDIN", "GITHUB", "WEBSITE"]);
@@ -149,6 +260,7 @@ export function ResumeContent({
   placeholders,
   isStreaming,
   onEdit,
+  onBatchEdit,
   jobDescription,
   templateSettings,
 }: ResumeContentProps) {
@@ -168,8 +280,12 @@ export function ResumeContent({
   };
 
   const handleLinkSave = (key: string, label: string, url: string) => {
-    onEdit?.(key, label);
-    onEdit?.(`${key}_URL`, url);
+    if (onBatchEdit) {
+      onBatchEdit({ [key]: label, [`${key}_URL`]: url });
+    } else {
+      onEdit?.(key, label);
+      onEdit?.(`${key}_URL`, url);
+    }
   };
 
   /**
@@ -311,6 +427,44 @@ export function ResumeContent({
                 onBlur={handleBlur}
               />
             ),
+          )}
+          {/* Custom user-added header items */}
+          {Object.keys(placeholders)
+            .filter((k) => k.startsWith("CUSTOM_") && !k.endsWith("_URL"))
+            .map((fieldKey) =>
+              placeholders[`${fieldKey}_URL`] ? (
+                <HeaderLink
+                  key={fieldKey}
+                  fieldKey={fieldKey}
+                  placeholders={placeholders}
+                  editable={editable}
+                  onSave={handleLinkSave}
+                />
+              ) : (
+                <HeaderText
+                  key={fieldKey}
+                  fieldKey={fieldKey}
+                  placeholders={placeholders}
+                  editable={editable}
+                  onBlur={handleBlur}
+                />
+              ),
+            )}
+          {/* Add new header item button */}
+          {editable && (
+            <AddHeaderItem
+              placeholders={placeholders}
+              onAdd={(key, value, url) => {
+                if (onBatchEdit) {
+                  const updates: Record<string, string> = { [key]: value };
+                  if (url) updates[`${key}_URL`] = url;
+                  onBatchEdit(updates);
+                } else {
+                  onEdit?.(key, value);
+                  if (url) onEdit?.(`${key}_URL`, url);
+                }
+              }}
+            />
           )}
         </div>
       </div>

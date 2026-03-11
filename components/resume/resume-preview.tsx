@@ -21,6 +21,7 @@ interface ResumePreviewProps {
   onSaveResume?: () => void;
   isSaving?: boolean;
   onPlaceholderChange?: (key: string, value: string) => void;
+  onBatchPlaceholderChange?: (updates: Record<string, string>) => void;
   jobDescription?: string;
   templateSettings?: TemplateSettings;
 }
@@ -35,6 +36,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       onSaveResume,
       isSaving,
       onPlaceholderChange,
+      onBatchPlaceholderChange,
       jobDescription,
       templateSettings,
     },
@@ -210,6 +212,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                         placeholders={placeholders}
                         isStreaming={isStreaming}
                         onEdit={i === 0 ? onPlaceholderChange : undefined}
+                        onBatchEdit={i === 0 ? onBatchPlaceholderChange : undefined}
                         jobDescription={i === 0 ? jobDescription : undefined}
                         templateSettings={templateSettings}
                       />

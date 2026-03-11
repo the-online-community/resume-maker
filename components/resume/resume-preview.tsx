@@ -11,6 +11,7 @@ import {
 import { ResumeContent } from "@/components/resume/resume-content";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { TemplateSettings } from "@/lib/resume/templates";
 
 interface ResumePreviewProps {
   placeholders: Record<string, string> | null;
@@ -21,6 +22,7 @@ interface ResumePreviewProps {
   isSaving?: boolean;
   onPlaceholderChange?: (key: string, value: string) => void;
   jobDescription?: string;
+  templateSettings?: TemplateSettings;
 }
 
 const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
@@ -34,6 +36,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       isSaving,
       onPlaceholderChange,
       jobDescription,
+      templateSettings,
     },
     ref,
   ) {
@@ -155,6 +158,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
           <ResumeContent
             placeholders={placeholders}
             isStreaming={isStreaming}
+            templateSettings={templateSettings}
           />
         </div>
 
@@ -207,6 +211,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                         isStreaming={isStreaming}
                         onEdit={i === 0 ? onPlaceholderChange : undefined}
                         jobDescription={i === 0 ? jobDescription : undefined}
+                        templateSettings={templateSettings}
                       />
                     </div>
                   </div>

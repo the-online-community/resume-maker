@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 
 import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
+import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -33,7 +34,11 @@ import {
   type SavedResumeEntry,
 } from "@/lib/resume/resume-store";
 import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
-import { DEFAULT_TEMPLATE } from "@/lib/resume/templates";
+import {
+  DEFAULT_SETTINGS,
+  DEFAULT_TEMPLATE,
+  type TemplateSettings,
+} from "@/lib/resume/templates";
 
 const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
@@ -70,10 +75,23 @@ export default function Page() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [cancelAt, setCancelAt] = useState<string | null>(null);
 
+  // Template settings
+  const [templateSettings, setTemplateSettings] =
+    useState<TemplateSettings>(DEFAULT_SETTINGS);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
+
   // Load saved generated resumes on mount
   useEffect(() => {
     getAllSavedResumes().then(setSavedGeneratedResumes);
   }, []);
+
+  // Load template settings when user changes
+  useEffect(() => {
+    fetch("/api/template-settings")
+      .then((res) => res.json())
+      .then((data: TemplateSettings) => setTemplateSettings(data))
+      .catch(() => {});
+  }, [user]);
 
   // Fetch usage count from DB when user changes
   useEffect(() => {
@@ -185,6 +203,7 @@ export default function Page() {
           userName: user?.user_metadata?.full_name || user?.user_metadata?.name,
           userEmail: user?.email,
           customPrompt: customPrompt || undefined,
+          templateSettings,
         }),
       });
 
@@ -243,7 +262,7 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt]);
+  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings]);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
@@ -380,6 +399,27 @@ export default function Page() {
                 {customPrompt ? "Prompt ✓" : "Add Prompt"}
               </Button>
 
+              <TemplateSettingsDialog
+                settings={templateSettings}
+                onSave={async (newSettings) => {
+                  setIsSavingSettings(true);
+                  try {
+                    const res = await fetch("/api/template-settings", {
+                      method: "PUT",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify(newSettings),
+                    });
+                    if (res.ok) setTemplateSettings(newSettings);
+                  } catch {
+                    // silently fail
+                  } finally {
+                    setIsSavingSettings(false);
+                  }
+                }}
+                isSaving={isSavingSettings}
+                disabled={!user}
+              />
+
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs whitespace-nowrap">
                   Pages
@@ -483,6 +523,7 @@ export default function Page() {
             onSaveResume={handleSaveResume}
             isSaving={isSaving}
             jobDescription={jobDescriptionRef.current}
+            templateSettings={templateSettings}
             onPlaceholderChange={(key, value) =>
               setPlaceholders((prev) =>
                 prev ? { ...prev, [key]: value } : prev,

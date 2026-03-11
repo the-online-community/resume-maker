@@ -4,6 +4,7 @@ import {
   ArrowDown01Icon,
   Cancel01Icon,
   FileIcon,
+  NoteIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useState } from "react";
@@ -32,33 +33,49 @@ import {
   useDropzone,
   type FileStatus,
 } from "@/components/ui/dropzone";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   clearAllResumes,
+  clearAllSavedResumes,
   deleteResume,
+  deleteSavedResume,
   getAllResumes,
+  getAllSavedResumes,
   saveResume,
   type ResumeEntry,
+  type SavedResumeEntry,
 } from "@/lib/resume/resume-store";
 import { cn } from "@/lib/utils";
 
-export default function ResumeDropzone() {
-  const [savedResumes, setSavedResumes] = useState<ResumeEntry[]>([]);
+interface ResumeDropzoneProps {
+  savedGeneratedResumes: SavedResumeEntry[];
+  onSavedResumesChange: (resumes: SavedResumeEntry[]) => void;
+}
+
+export default function ResumeDropzone({
+  savedGeneratedResumes,
+  onSavedResumesChange,
+}: ResumeDropzoneProps) {
+  const [uploadedResumes, setUploadedResumes] = useState<ResumeEntry[]>([]);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
+  const [clearTarget, setClearTarget] = useState<"uploaded" | "saved">(
+    "uploaded",
+  );
   const [historyOpen, setHistoryOpen] = useState(() => {
     if (typeof window === "undefined") return true;
     return localStorage.getItem("resume-history-open") !== "false";
   });
 
-  // Load persisted resumes on mount
+  // Load persisted uploaded resumes on mount
   useEffect(() => {
-    getAllResumes().then(setSavedResumes);
+    getAllResumes().then(setUploadedResumes);
   }, []);
 
   const dropzone = useDropzone<string>({
     onDropFile: async (file) => {
       // Save to IndexedDB
       const entry = await saveResume(file);
-      setSavedResumes((prev) => [...prev, entry]);
+      setUploadedResumes((prev) => [...prev, entry]);
       return { status: "success", result: entry.id };
     },
     validation: {
@@ -68,16 +85,27 @@ export default function ResumeDropzone() {
     },
   });
 
-  const handleRemoveSaved = useCallback(async (id: string) => {
+  const handleRemoveUploaded = useCallback(async (id: string) => {
     await deleteResume(id);
-    setSavedResumes((prev) => prev.filter((r) => r.id !== id));
+    setUploadedResumes((prev) => prev.filter((r) => r.id !== id));
   }, []);
+
+  const handleRemoveSaved = useCallback(
+    async (id: string) => {
+      await deleteSavedResume(id);
+      onSavedResumesChange(savedGeneratedResumes.filter((r) => r.id !== id));
+    },
+    [savedGeneratedResumes, onSavedResumesChange],
+  );
 
   const pendingFiles = dropzone.fileStatuses.filter(
     (f) => f.status !== "success",
   );
 
-  const hasFiles = pendingFiles.length > 0 || savedResumes.length > 0;
+  const hasUploadedFiles =
+    pendingFiles.length > 0 || uploadedResumes.length > 0;
+  const hasSavedResumes = savedGeneratedResumes.length > 0;
+  const hasAnyFiles = hasUploadedFiles || hasSavedResumes;
 
   return (
     <Dropzone {...dropzone}>
@@ -103,7 +131,7 @@ export default function ResumeDropzone() {
 
       <DropzoneMessage className="mt-2" />
 
-      {hasFiles && (
+      {hasAnyFiles && (
         <>
           <div className="mt-10 flex items-center justify-between">
             <button
@@ -126,72 +154,152 @@ export default function ResumeDropzone() {
                 }}
               />
             </button>
-            <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
-              <DialogTrigger asChild>
-                <button
-                  type="button"
-                  className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
-                >
-                  Clear All
-                </button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-sm">
-                <DialogHeader>
-                  <DialogTitle>Clear all resumes?</DialogTitle>
-                  <DialogDescription>
-                    This will permanently delete all saved resumes. This action
-                    cannot be undone.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter className="gap-2">
-                  <Button
-                    variant="outline"
-                    onClick={() => setClearDialogOpen(false)}
-                  >
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    onClick={() => {
-                      setSavedResumes([]);
-                      clearAllResumes();
-                      setClearDialogOpen(false);
-                    }}
-                  >
-                    Clear All
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
           </div>
 
           {historyOpen && (
-            <>
-              {/* Currently uploading files (pending/error only) */}
-              {pendingFiles.length > 0 && (
-                <DropzoneFileList className="mt-4 gap-2">
-                  {pendingFiles.map((file) => (
-                    <UploadingFileItem key={file.id} file={file} />
-                  ))}
-                </DropzoneFileList>
-              )}
+            <Tabs defaultValue="uploaded" className="mt-4">
+              <TabsList variant="line" className="w-full">
+                <TabsTrigger value="uploaded">
+                  Uploaded
+                  {uploadedResumes.length > 0 && (
+                    <span className="text-muted-foreground ml-1 text-[10px]">
+                      ({uploadedResumes.length})
+                    </span>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="saved">
+                  Saved
+                  {savedGeneratedResumes.length > 0 && (
+                    <span className="text-muted-foreground ml-1 text-[10px]">
+                      ({savedGeneratedResumes.length})
+                    </span>
+                  )}
+                </TabsTrigger>
+              </TabsList>
 
-              {/* Saved resumes */}
-              {savedResumes.length > 0 && (
-                <ul className="mt-2 flex flex-col gap-2">
-                  {savedResumes.map((resume) => (
-                    <SavedResumeItem
-                      key={resume.id}
-                      resume={resume}
-                      onRemove={handleRemoveSaved}
-                    />
-                  ))}
-                </ul>
-              )}
-            </>
+              {/* Uploaded Resumes Tab */}
+              <TabsContent value="uploaded" className="mt-3">
+                {hasUploadedFiles ? (
+                  <>
+                    <div className="mb-2 flex justify-end">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                        onClick={() => {
+                          setClearTarget("uploaded");
+                          setClearDialogOpen(true);
+                        }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+
+                    {/* Currently uploading files (pending/error only) */}
+                    {pendingFiles.length > 0 && (
+                      <DropzoneFileList className="gap-2">
+                        {pendingFiles.map((file) => (
+                          <UploadingFileItem key={file.id} file={file} />
+                        ))}
+                      </DropzoneFileList>
+                    )}
+
+                    {/* Saved uploaded resumes */}
+                    {uploadedResumes.length > 0 && (
+                      <ul className="mt-2 flex flex-col gap-2">
+                        {uploadedResumes.map((resume) => (
+                          <UploadedResumeItem
+                            key={resume.id}
+                            resume={resume}
+                            onRemove={handleRemoveUploaded}
+                          />
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-muted-foreground py-8 text-center text-xs">
+                    No uploaded resumes yet
+                  </p>
+                )}
+              </TabsContent>
+
+              {/* Saved Resumes Tab */}
+              <TabsContent value="saved" className="mt-3">
+                {hasSavedResumes ? (
+                  <>
+                    <div className="mb-2 flex justify-end">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                        onClick={() => {
+                          setClearTarget("saved");
+                          setClearDialogOpen(true);
+                        }}
+                      >
+                        Clear All
+                      </button>
+                    </div>
+                    <ul className="flex flex-col gap-2">
+                      {savedGeneratedResumes.map((resume) => (
+                        <SavedGeneratedResumeItem
+                          key={resume.id}
+                          resume={resume}
+                          onRemove={handleRemoveSaved}
+                        />
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground py-8 text-center text-xs">
+                    No saved resumes yet — generate a resume and click
+                    &quot;Save Resume&quot;
+                  </p>
+                )}
+              </TabsContent>
+            </Tabs>
           )}
         </>
       )}
+
+      {/* Clear All Confirmation Dialog */}
+      <Dialog open={clearDialogOpen} onOpenChange={setClearDialogOpen}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>
+              Clear all {clearTarget === "uploaded" ? "uploaded" : "saved"}{" "}
+              resumes?
+            </DialogTitle>
+            <DialogDescription>
+              This will permanently delete all{" "}
+              {clearTarget === "uploaded" ? "uploaded" : "saved"} resumes. This
+              action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setClearDialogOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => {
+                if (clearTarget === "uploaded") {
+                  setUploadedResumes([]);
+                  clearAllResumes();
+                } else {
+                  onSavedResumesChange([]);
+                  clearAllSavedResumes();
+                }
+                setClearDialogOpen(false);
+              }}
+            >
+              Clear All
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dropzone>
   );
 }
@@ -237,7 +345,7 @@ function UploadingFileItem({ file }: { file: FileStatus<string, string> }) {
   );
 }
 
-function SavedResumeItem({
+function UploadedResumeItem({
   resume,
   onRemove,
 }: {
@@ -253,6 +361,43 @@ function SavedResumeItem({
         <div className="flex min-w-0 flex-1 flex-col gap-1">
           <p className="truncate text-sm font-medium">{resume.fileName}</p>
           <p className="text-muted-foreground text-xs">Saved</p>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => onRemove(resume.id)}
+        className="text-muted-foreground hover:text-foreground shrink-0 cursor-pointer p-1 transition-colors"
+      >
+        <HugeiconsIcon icon={Cancel01Icon} className="size-4" />
+      </button>
+    </li>
+  );
+}
+
+function SavedGeneratedResumeItem({
+  resume,
+  onRemove,
+}: {
+  resume: SavedResumeEntry;
+  onRemove: (id: string) => void;
+}) {
+  const date = new Date(resume.savedAt);
+  const dateStr = date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <li className="flex items-center gap-3 border px-2 py-2">
+      <div className="flex flex-1 items-start gap-3 overflow-hidden">
+        <div className="mt-1.5 flex size-9 shrink-0 items-start justify-center">
+          <HugeiconsIcon icon={NoteIcon} className="text-primary size-4" />
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
+          <p className="truncate text-sm font-medium">{resume.name}</p>
+          <p className="text-muted-foreground text-xs">{dateStr}</p>
         </div>
       </div>
       <button

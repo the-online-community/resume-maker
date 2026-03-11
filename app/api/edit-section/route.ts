@@ -56,7 +56,7 @@ CRITICAL RULES:
       : `CURRENT ${sectionKey} SECTION:\n${currentContent}\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}`;
 
     const stream = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: "gpt-5-mini",
       stream: true,
       messages: [
         { role: "system", content: systemPrompt },

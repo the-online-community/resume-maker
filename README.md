@@ -1,6 +1,6 @@
 # Resume Maker
 
-AI-powered resume tailoring tool. Upload your existing resumes, paste a job description, and get a polished, ATS-optimized resume in seconds — powered by GPT-4o.
+AI-powered resume tailoring tool. Upload your existing resumes, paste a job description, and get a polished, ATS-optimized resume in seconds — powered by GPT-5.2.
 
 ## Features
 
@@ -16,18 +16,18 @@ AI-powered resume tailoring tool. Upload your existing resumes, paste a job desc
 
 ## Tech Stack
 
-| Layer       | Tech                                       |
-| ----------- | ------------------------------------------ |
-| Framework   | [Next.js 16](https://nextjs.org) (App Router) |
-| Language    | TypeScript                                 |
-| Styling     | [Tailwind CSS v4](https://tailwindcss.com) |
+| Layer       | Tech                                                                   |
+| ----------- | ---------------------------------------------------------------------- |
+| Framework   | [Next.js 16](https://nextjs.org) (App Router)                          |
+| Language    | TypeScript                                                             |
+| Styling     | [Tailwind CSS v4](https://tailwindcss.com)                             |
 | UI          | [shadcn/ui](https://ui.shadcn.com) + [Radix](https://www.radix-ui.com) |
-| Auth        | [Supabase Auth](https://supabase.com/auth) (Google OAuth / PKCE) |
-| Database    | [Supabase](https://supabase.com) (Postgres + Row Level Security) |
-| AI          | [OpenAI GPT-4o](https://platform.openai.com) |
-| Payments    | [Stripe](https://stripe.com) (Subscriptions + Webhooks) |
-| PDF Parsing | [pdf-parse](https://www.npmjs.com/package/pdf-parse) |
-| Hosting     | [Vercel](https://vercel.com)               |
+| Auth        | [Supabase Auth](https://supabase.com/auth) (Google OAuth / PKCE)       |
+| Database    | [Supabase](https://supabase.com) (Postgres + Row Level Security)       |
+| AI          | [OpenAI GPT-4.1](https://platform.openai.com)                          |
+| Payments    | [Stripe](https://stripe.com) (Subscriptions + Webhooks)                |
+| PDF Parsing | [pdf-parse](https://www.npmjs.com/package/pdf-parse)                   |
+| Hosting     | [Vercel](https://vercel.com)                                           |
 
 ## Prerequisites
 
@@ -106,15 +106,15 @@ Open [http://localhost:3000](http://localhost:3000).
 
 Copy `.env.example` to `.env` and fill in each value:
 
-| Variable                        | Required | Description                                              |
-| ------------------------------- | -------- | -------------------------------------------------------- |
-| `OPENAI_API_KEY`                | ✅       | OpenAI API key (starts with `sk-`)                       |
-| `NEXT_PUBLIC_SUPABASE_URL`      | ✅       | Supabase project URL (`https://xxx.supabase.co`)         |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅       | Supabase anonymous/public key                            |
+| Variable                        | Required | Description                                                        |
+| ------------------------------- | -------- | ------------------------------------------------------------------ |
+| `OPENAI_API_KEY`                | ✅       | OpenAI API key (starts with `sk-`)                                 |
+| `NEXT_PUBLIC_SUPABASE_URL`      | ✅       | Supabase project URL (`https://xxx.supabase.co`)                   |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | ✅       | Supabase anonymous/public key                                      |
 | `SUPABASE_SERVICE_ROLE_KEY`     | ✅       | Supabase service role key (for webhook — never expose client-side) |
-| `STRIPE_SECRET_KEY`             | ✅       | Stripe secret key (`sk_test_...` or `sk_live_...`)       |
-| `STRIPE_WEBHOOK_SECRET`         | ✅       | Stripe webhook signing secret (`whsec_...`)              |
-| `NEXT_PUBLIC_STRIPE_PRICE_ID`   | ✅       | Stripe Price ID for the Pro subscription (`price_...`)   |
+| `STRIPE_SECRET_KEY`             | ✅       | Stripe secret key (`sk_test_...` or `sk_live_...`)                 |
+| `STRIPE_WEBHOOK_SECRET`         | ✅       | Stripe webhook signing secret (`whsec_...`)                        |
+| `NEXT_PUBLIC_STRIPE_PRICE_ID`   | ✅       | Stripe Price ID for the Pro subscription (`price_...`)             |
 
 > **Note**: Google OAuth credentials (`GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET`) are configured in the **Supabase Dashboard**, not in `.env`.
 
@@ -169,14 +169,14 @@ resume-maker/
 
 ## Available Scripts
 
-| Command              | Description                            |
-| -------------------- | -------------------------------------- |
-| `pnpm dev`           | Start the development server           |
-| `pnpm build`         | Create a production build              |
-| `pnpm start`         | Serve the production build             |
-| `pnpm lint`          | Run ESLint                             |
-| `pnpm format`        | Format code with Prettier              |
-| `pnpm format:check`  | Check formatting without writing       |
+| Command             | Description                      |
+| ------------------- | -------------------------------- |
+| `pnpm dev`          | Start the development server     |
+| `pnpm build`        | Create a production build        |
+| `pnpm start`        | Serve the production build       |
+| `pnpm lint`         | Run ESLint                       |
+| `pnpm format`       | Format code with Prettier        |
+| `pnpm format:check` | Check formatting without writing |
 
 ## Deployment
 

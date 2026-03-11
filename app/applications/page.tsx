@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
-import { CONTENT_WIDTH, FRAME_WIDTH } from "@/components/resume/constants";
+import { FRAME_WIDTH } from "@/components/resume/constants";
 import { ResumeContent } from "@/components/resume/resume-content";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Badge } from "@/components/ui/badge";
@@ -178,7 +178,8 @@ function ResumePreviewDialog({
               <div
                 className="resume-page origin-top-left"
                 style={{
-                  width: CONTENT_WIDTH,
+                  width: FRAME_WIDTH,
+                  padding: 32,
                   transform: `scale(${Math.min(1, 680 / FRAME_WIDTH)})`,
                   transformOrigin: "top left",
                 }}

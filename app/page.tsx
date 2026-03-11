@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 
 import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
+import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -26,6 +27,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { UserMenu } from "@/components/user-menu";
 import { useSpeechToText } from "@/hooks/use-speech-to-text";
+import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import {
   getAllResumes,
@@ -50,10 +52,11 @@ export default function Page() {
   const resumeRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [placeholders, setPlaceholders] = useState<Record<
-    string,
-    string
-  > | null>(null);
+  const {
+    value: placeholders,
+    push: pushPlaceholders,
+    set: setPlaceholders,
+  } = useUndoHistory<Record<string, string> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [targetPages, setTargetPages] = useState(1);
   const [hasJobDescription, setHasJobDescription] = useState(false);
@@ -253,7 +256,7 @@ export default function Page() {
         string,
         string
       >;
-      setPlaceholders(finalPlaceholders);
+      pushPlaceholders(finalPlaceholders);
       setIsStreaming(false);
       incrementUsage();
     } catch (err) {
@@ -262,7 +265,7 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings]);
+  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings, pushPlaceholders, setPlaceholders]);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
@@ -420,6 +423,17 @@ export default function Page() {
                 disabled={!user}
               />
 
+              <ResumeAnalyzerDialog
+                placeholders={placeholders}
+                jobDescription={jobDescriptionRef.current}
+                disabled={!user}
+                onAcceptSuggestion={(section, newText) => {
+                  if (placeholders) {
+                    pushPlaceholders({ ...placeholders, [section]: newText });
+                  }
+                }}
+              />
+
               <div className="flex items-center gap-2">
                 <span className="text-muted-foreground text-xs whitespace-nowrap">
                   Pages
@@ -507,6 +521,7 @@ export default function Page() {
             <ResumeDropzone
               savedGeneratedResumes={savedGeneratedResumes}
               onSavedResumesChange={setSavedGeneratedResumes}
+              onLoadResume={(p) => pushPlaceholders(p)}
             />
           </div>
         </div>
@@ -525,8 +540,13 @@ export default function Page() {
             jobDescription={jobDescriptionRef.current}
             templateSettings={templateSettings}
             onPlaceholderChange={(key, value) =>
-              setPlaceholders((prev) =>
-                prev ? { ...prev, [key]: value } : prev,
+              pushPlaceholders(
+                placeholders ? { ...placeholders, [key]: value } : null,
+              )
+            }
+            onBatchPlaceholderChange={(updates) =>
+              pushPlaceholders(
+                placeholders ? { ...placeholders, ...updates } : null,
               )
             }
           />

@@ -77,6 +77,16 @@ export function Footer() {
                 preview, then download as PDF.
               </p>
             </div>
+            <div className="space-y-1">
+              <p className="text-foreground font-medium">
+                5. Track your application
+              </p>
+              <p>
+                Click &quot;Track Application&quot; to save your tailored resume
+                and log the job in your applications tracker — keep tabs on
+                every role you apply to.
+              </p>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

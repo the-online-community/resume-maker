@@ -140,8 +140,8 @@
 
 .ai-section-btn {
   position: absolute;
-  top: -2px;
-  right: 4px;
+  top: 4px;
+  right: 8px;
   width: 24px;
   height: 24px;
   border: 1px solid var(--border);
@@ -155,7 +155,7 @@
     opacity 0.15s,
     transform 0.15s,
     box-shadow 0.15s;
-  z-index: 10;
+  z-index: 20;
 }
 
 .ai-section-btn:hover {

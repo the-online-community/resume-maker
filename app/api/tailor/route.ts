@@ -1,5 +1,7 @@
 import OpenAI from "openai";
 
+import type { TemplateSettings } from "@/lib/resume/templates";
+
 interface TailorRequest {
   jobDescription: string;
   resumeTexts: string[];
@@ -8,6 +10,7 @@ interface TailorRequest {
   userName?: string;
   userEmail?: string;
   customPrompt?: string;
+  templateSettings?: TemplateSettings;
 }
 
 export async function POST(request: Request) {
@@ -21,6 +24,7 @@ export async function POST(request: Request) {
       userName,
       userEmail,
       customPrompt,
+      templateSettings,
     } = body;
 
     const hasResumes = resumeTexts && resumeTexts.length > 0;
@@ -36,6 +40,12 @@ export async function POST(request: Request) {
     }
 
     const placeholderList = placeholders.join(", ");
+
+    // Build template-specific instructions for the AI
+    const bulletChar = templateSettings?.bulletStyle === "dash" ? "—" : "•";
+    const templateInstructions = templateSettings
+      ? `\n\nTEMPLATE SETTINGS:\n- Use "${bulletChar}" as the bullet character for experience bullet points.\n- Only generate these sections: ${templateSettings.sections.join(", ")}. Omit any section not listed.\n- Only include these header/contact fields: ${templateSettings.headerFields.join(", ")}. Leave other contact fields as empty strings.`
+      : "";
 
     const openai = new OpenAI({
       apiKey: process.env.OPENAI_API_KEY,
@@ -73,12 +83,12 @@ Guidelines for each field:
 - GITHUB: Extract the full GitHub profile URL from the resume(s) (e.g. "github.com/username"), or empty string if not found
 - WEBSITE: Extract personal website/portfolio URL from the resume(s) (e.g. "example.com"), or empty string if not found
 - SUMMARY: 2-3 sentence professional summary tailored to the job description, using only the user's real experience
-- EXPERIENCE: Formatted as a string with each role separated by newlines. For each role include: Job Title at Company | Location | Dates, followed by bullet points. Tailor bullet points to highlight relevance to the job description.
+- EXPERIENCE: Formatted as a string with each role separated by newlines. For each role include: Job Title | Company | Location | StartYear – EndYear (use years only, no months), followed by bullet points. Tailor bullet points to highlight relevance to the job description.
 - EDUCATION: Formatted as a string with each entry on its own line: Degree, Institution | Year
 - SKILLS: Comma-separated list of skills from the user's resume, ordered by relevance to the job description
 - CERTIFICATIONS: If present in the user's resume, list them. Otherwise empty string.
 
-Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`
+Keep all content professional and concise. Optimize for ATS (Applicant Tracking System) compatibility.${templateInstructions}${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`
             : `You are a professional resume writer. The user has NOT uploaded a resume. Your job is to generate a well-structured resume draft tailored to the given job description.
 
 You know the user's name${userEmail ? " and email" : ""}. Use this information and create a professional resume that:
@@ -105,12 +115,12 @@ Guidelines for each field:
 - GITHUB: Use "github.com/[username]" if the role is technical, otherwise empty string
 - WEBSITE: Empty string
 - SUMMARY: 2-3 sentence professional summary tailored to the job description
-- EXPERIENCE: Formatted as a string with 2-3 placeholder roles relevant to the job. For each role: Job Title at [Company Name] | [City, State] | [Start Date] – [End Date], followed by bullet points with quantified achievements using [X] placeholders.
+- EXPERIENCE: Formatted as a string with 2-3 placeholder roles relevant to the job. For each role: Job Title | [Company Name] | [City, State] | [StartYear] – [EndYear] (use years only, no months), followed by bullet points with quantified achievements using [X] placeholders.
 - EDUCATION: "[Degree], [University] | [Year]"
 - SKILLS: Comma-separated list of skills from the job description requirements
 - CERTIFICATIONS: Empty string
 
-Keep all content professional and concise. Optimize for ATS compatibility.${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`,
+Keep all content professional and concise. Optimize for ATS compatibility.${templateInstructions}${customPrompt ? `\n\nADDITIONAL USER INSTRUCTIONS:\n${customPrompt}` : ""}`,
         },
         {
           role: "user",

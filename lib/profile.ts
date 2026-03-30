@@ -12,6 +12,12 @@ export interface EducationEntry {
   year: string;
 }
 
+export interface ProjectEntry {
+  name: string;
+  stack: string; // comma-separated, e.g. "React, Node.js, PostgreSQL"
+  description: string;
+}
+
 export interface UserProfile {
   full_name: string;
   email: string;
@@ -23,6 +29,7 @@ export interface UserProfile {
   skills: string[];
   experience: ExperienceEntry[];
   education: EducationEntry[];
+  projects: ProjectEntry[];
 }
 
 export const EMPTY_PROFILE: UserProfile = {
@@ -36,6 +43,7 @@ export const EMPTY_PROFILE: UserProfile = {
   skills: [],
   experience: [],
   education: [],
+  projects: [],
 };
 
 export function isProfileEmpty(profile: UserProfile): boolean {
@@ -49,6 +57,7 @@ export function isProfileEmpty(profile: UserProfile): boolean {
     !profile.website &&
     profile.skills.length === 0 &&
     profile.experience.length === 0 &&
-    profile.education.length === 0
+    profile.education.length === 0 &&
+    profile.projects.length === 0
   );
 }

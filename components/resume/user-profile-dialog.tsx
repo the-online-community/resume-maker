@@ -21,6 +21,7 @@ import {
   EMPTY_PROFILE,
   type EducationEntry,
   type ExperienceEntry,
+  type ProjectEntry,
   type UserProfile,
 } from "@/lib/profile";
 
@@ -47,7 +48,7 @@ export function UserProfileDialog({
   const handleOpenChange = useCallback(
     (next: boolean) => {
       if (next) {
-        setDraft(profile);
+        setDraft({ ...EMPTY_PROFILE, ...profile });
         setSkillsText(profile.skills.join(", "));
       }
       setOpen(next);
@@ -125,6 +126,31 @@ export function UserProfileDialog({
       education: d.education.filter((_, idx) => idx !== i),
     }));
 
+  // ── Project helpers ────────────────────────────────────────────────────────
+
+  const addProject = () =>
+    setDraft((d) => ({
+      ...d,
+      projects: [...(d.projects ?? []), { name: "", stack: "", description: "" }],
+    }));
+
+  const updateProject = (
+    i: number,
+    field: keyof ProjectEntry,
+    value: string,
+  ) =>
+    setDraft((d) => {
+      const updated = [...(d.projects ?? [])];
+      updated[i] = { ...updated[i], [field]: value };
+      return { ...d, projects: updated };
+    });
+
+  const removeProject = (i: number) =>
+    setDraft((d) => ({
+      ...d,
+      projects: (d.projects ?? []).filter((_, idx) => idx !== i),
+    }));
+
   // ── Field helper ───────────────────────────────────────────────────────────
 
   const field = (
@@ -184,6 +210,7 @@ export function UserProfileDialog({
             <TabsTrigger value="skills">Skills</TabsTrigger>
             <TabsTrigger value="experience">Experience</TabsTrigger>
             <TabsTrigger value="education">Education</TabsTrigger>
+            <TabsTrigger value="projects">Projects</TabsTrigger>
           </TabsList>
 
           {/* ── Contact & Links ── */}
@@ -398,6 +425,80 @@ export function UserProfileDialog({
               >
                 <HugeiconsIcon icon={PlusSignIcon} className="size-3.5" />
                 Add Education
+              </Button>
+            </div>
+          </TabsContent>
+          {/* ── Projects ── */}
+          <TabsContent
+            value="projects"
+            className="mt-4 max-h-[50vh] overflow-y-auto"
+          >
+            <p className="text-muted-foreground mb-3 text-xs">
+              Add projects with their tech stack. The AI uses these to write
+              targeted Upwork proposals and highlight relevant work.
+            </p>
+            <div className="space-y-3">
+              {(draft.projects ?? []).length === 0 && (
+                <p className="text-muted-foreground text-xs">
+                  No projects yet. Add one below.
+                </p>
+              )}
+              {(draft.projects ?? []).map((entry, i) => (
+                <div key={i} className="border-border relative border p-3">
+                  <button
+                    type="button"
+                    onClick={() => removeProject(i)}
+                    className="text-muted-foreground hover:text-destructive absolute top-2 right-2 cursor-pointer transition-colors"
+                    aria-label="Remove project"
+                  >
+                    <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+                  </button>
+                  <div className="space-y-2 pr-6">
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs">
+                        Project Name
+                      </label>
+                      <Input
+                        value={entry.name}
+                        onChange={(e) => updateProject(i, "name", e.target.value)}
+                        placeholder="E-commerce Platform"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs">
+                        Tech Stack
+                      </label>
+                      <Input
+                        value={entry.stack}
+                        onChange={(e) => updateProject(i, "stack", e.target.value)}
+                        placeholder="React, Node.js, PostgreSQL, Stripe"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs">
+                        Short Description
+                      </label>
+                      <Textarea
+                        value={entry.description}
+                        onChange={(e) =>
+                          updateProject(i, "description", e.target.value)
+                        }
+                        placeholder="Built a full-stack e-commerce platform with real-time inventory and Stripe checkout..."
+                        className="min-h-16 resize-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={addProject}
+                className="w-full gap-1.5"
+              >
+                <HugeiconsIcon icon={PlusSignIcon} className="size-3.5" />
+                Add Project
               </Button>
             </div>
           </TabsContent>

@@ -15,6 +15,7 @@ import ResumePreview from "@/components/resume/resume-preview";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import { UserProfileDialog } from "@/components/resume/user-profile-dialog";
+import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -81,6 +82,10 @@ export default function Page() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [resumeTitle, setResumeTitle] = useState("Resume");
+  const [activeTab, setActiveTab] = useState<"resume" | "proposal">("resume");
+  const [proposalText, setProposalText] = useState("");
+  const [isProposalLoading, setIsProposalLoading] = useState(false);
+  const [isProposalStreaming, setIsProposalStreaming] = useState(false);
 
   // Saved generated resumes (lifted from dropzone for AI context)
   const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
@@ -357,6 +362,60 @@ export default function Page() {
     }
   }, []);
 
+  const handleGenerateProposal = useCallback(
+    async (refineInstruction?: string) => {
+      const jobDescription = jobDescriptionRef.current;
+      if (!jobDescription.trim()) {
+        setError("Please paste a job description first");
+        return;
+      }
+      setError(null);
+      setIsProposalLoading(true);
+      setIsProposalStreaming(false);
+      if (!refineInstruction) setProposalText("");
+
+      try {
+        const res = await fetch("/api/proposal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobDescription,
+            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
+            customPrompt: refineInstruction || customPrompt || undefined,
+            currentProposal: refineInstruction ? proposalText : undefined,
+            model: selectedModel,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Failed to generate proposal");
+
+        setIsProposalStreaming(true);
+        setIsProposalLoading(false);
+        setProposalText("");
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          setProposalText(accumulated);
+        }
+
+        setIsProposalStreaming(false);
+        incrementUsage();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "Something went wrong");
+        setIsProposalStreaming(false);
+      } finally {
+        setIsProposalLoading(false);
+      }
+    },
+    [jobDescriptionRef, userProfile, customPrompt, selectedModel, proposalText, incrementUsage],
+  );
+
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
     if (!element) return;
@@ -472,7 +531,8 @@ export default function Page() {
           {!authLoading && !user ? (
             <SignInButton />
           ) : (
-            <div className="flex items-center gap-3">
+            <div className="flex flex-wrap items-center gap-3">
+              {/* Primary action */}
               {!isSubscribed && attemptsLeft <= 0 ? (
                 <Button
                   size="lg"
@@ -482,7 +542,7 @@ export default function Page() {
                 >
                   {isUpgrading ? "Redirecting..." : "Upgrade to Pro — $5/mo"}
                 </Button>
-              ) : (
+              ) : activeTab === "resume" ? (
                 <Button
                   size="lg"
                   className="flex-1"
@@ -491,8 +551,18 @@ export default function Page() {
                 >
                   {isLoading ? "Tailoring..." : "Tailor Resume"}
                 </Button>
+              ) : (
+                <Button
+                  size="lg"
+                  className="flex-1"
+                  onClick={() => handleGenerateProposal()}
+                  disabled={isProposalLoading || isProposalStreaming || authLoading || !usageLoaded}
+                >
+                  {isProposalLoading ? "Generating..." : "Generate Proposal"}
+                </Button>
               )}
 
+              {/* Add Prompt — always visible */}
               <Button
                 size="lg"
                 variant={customPrompt ? "default" : "outline"}
@@ -505,66 +575,71 @@ export default function Page() {
                 {customPrompt ? "Prompt ✓" : "Add Prompt"}
               </Button>
 
-              <TemplateSettingsDialog
-                settings={templateSettings}
-                onSave={async (newSettings) => {
-                  setIsSavingSettings(true);
-                  try {
-                    const res = await fetch("/api/template-settings", {
-                      method: "PUT",
-                      headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify(newSettings),
-                    });
-                    if (res.ok) setTemplateSettings(newSettings);
-                  } catch {
-                    // silently fail
-                  } finally {
-                    setIsSavingSettings(false);
-                  }
-                }}
-                isSaving={isSavingSettings}
-                disabled={!user}
-              />
+              {/* Resume-only controls */}
+              {activeTab === "resume" && (
+                <>
+                  <TemplateSettingsDialog
+                    settings={templateSettings}
+                    onSave={async (newSettings) => {
+                      setIsSavingSettings(true);
+                      try {
+                        const res = await fetch("/api/template-settings", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(newSettings),
+                        });
+                        if (res.ok) setTemplateSettings(newSettings);
+                      } catch {
+                        // silently fail
+                      } finally {
+                        setIsSavingSettings(false);
+                      }
+                    }}
+                    isSaving={isSavingSettings}
+                    disabled={!user}
+                  />
 
-              <ResumeAnalyzerDialog
-                placeholders={placeholders}
-                jobDescription={jobDescriptionRef.current}
-                disabled={!user}
-                onAcceptSuggestion={(section, newText) => {
-                  if (placeholders) {
-                    pushPlaceholders({ ...placeholders, [section]: newText });
-                  }
-                }}
-              />
+                  <ResumeAnalyzerDialog
+                    placeholders={placeholders}
+                    jobDescription={jobDescriptionRef.current}
+                    disabled={!user}
+                    onAcceptSuggestion={(section, newText) => {
+                      if (placeholders) {
+                        pushPlaceholders({ ...placeholders, [section]: newText });
+                      }
+                    }}
+                  />
 
-              <div className="flex items-center gap-2">
-                <span className="text-muted-foreground text-xs whitespace-nowrap">
-                  Pages
-                </span>
-                <div className="border-input flex items-center border">
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
-                    disabled={targetPages <= 1}
-                    aria-label="Decrease pages"
-                  >
-                    −
-                  </button>
-                  <span className="w-6 text-center text-sm font-medium tabular-nums">
-                    {targetPages}
-                  </span>
-                  <button
-                    type="button"
-                    className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                    onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
-                    disabled={targetPages >= 2}
-                    aria-label="Increase pages"
-                  >
-                    +
-                  </button>
-                </div>
-              </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground text-xs whitespace-nowrap">
+                      Pages
+                    </span>
+                    <div className="border-input flex items-center border">
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
+                        disabled={targetPages <= 1}
+                        aria-label="Decrease pages"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-sm font-medium tabular-nums">
+                        {targetPages}
+                      </span>
+                      <button
+                        type="button"
+                        className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                        onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
+                        disabled={targetPages >= 2}
+                        aria-label="Increase pages"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
@@ -641,74 +716,105 @@ export default function Page() {
 
         {/* Right panel */}
         <div className="w-full">
-          <div className="mb-4 flex items-center gap-2">
-            {placeholders ? (
-              <>
-                <input
-                  type="text"
-                  value={resumeTitle}
-                  onChange={(e) => setResumeTitle(e.target.value)}
-                  className="flex-1 bg-transparent font-mono text-base outline-none focus:border-b focus:border-foreground/20"
-                  placeholder="Resume title..."
-                />
-                {user && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="shrink-0 text-xs"
-                    disabled={isTracking}
-                    onClick={async () => {
-                      setIsTracking(true);
-                      // Extract company and position from resumeTitle
-                      const parts = resumeTitle.split("\u2014").map((s) => s.trim());
-                      const position = placeholders.JOB_TITLE || parts[0] || "";
-                      const company = parts[1] || "";
-
-                      try {
-                        await fetch("/api/applications", {
-                          method: "POST",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ position, company, resume_data: placeholders }),
-                        });
-                        router.push("/applications");
-                      } catch {
-                        setIsTracking(false);
-                      }
-                    }}
-                  >
-                    {isTracking ? "Tracking..." : "Track Application"}
-                  </Button>
-                )}
-              </>
-            ) : (
-              <h2 className="flex-1 font-mono">Resume</h2>
-            )}
+          {/* Tab header row */}
+          <div className="mb-4 flex items-center justify-between gap-2">
+            {/* Tabs */}
+            <div className="flex items-center gap-0">
+              {(["resume", "proposal"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  onClick={() => setActiveTab(tab)}
+                  className={`cursor-pointer border-b-2 pb-1 pr-4 font-mono text-base transition-colors capitalize ${
+                    activeTab === tab
+                      ? "border-foreground text-foreground"
+                      : "border-transparent text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {tab}
+                </button>
+              ))}
+            </div>
+            {/* Model selector always visible */}
             <ModelSelector
               selectedModelId={selectedModel}
               onModelChange={setSelectedModel}
             />
           </div>
-          <ResumePreview
-            ref={resumeRef}
-            placeholders={placeholders}
-            isLoading={isLoading}
-            isStreaming={isStreaming}
-            onDownloadPdf={handleDownloadPdf}
-            onSaveResume={handleSaveResume}
-            isSaving={isSaving}
-            jobDescription={jobDescriptionRef.current}
-            templateSettings={templateSettings}
-            onPlaceholderChange={(key, value) =>
-              pushPlaceholders(
-                placeholders ? { ...placeholders, [key]: value } : null,
-              )
-            }
-            onBatchPlaceholderChange={(updates) =>
-              pushPlaceholders(
-                placeholders ? { ...placeholders, ...updates } : null,
-              )
-            }
-          />
+
+          {/* Resume tab — title input + track + preview */}
+          {activeTab === "resume" && (
+            <>
+              {placeholders && (
+                <div className="mb-4 flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={resumeTitle}
+                    onChange={(e) => setResumeTitle(e.target.value)}
+                    className="flex-1 bg-transparent font-mono text-sm outline-none focus:border-b focus:border-foreground/20"
+                    placeholder="Resume title..."
+                  />
+                  {user && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 text-xs"
+                      disabled={isTracking}
+                      onClick={async () => {
+                        setIsTracking(true);
+                        const parts = resumeTitle.split("\u2014").map((s) => s.trim());
+                        const position = placeholders.JOB_TITLE || parts[0] || "";
+                        const company = parts[1] || "";
+                        try {
+                          await fetch("/api/applications", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify({ position, company, resume_data: placeholders }),
+                          });
+                          router.push("/applications");
+                        } catch {
+                          setIsTracking(false);
+                        }
+                      }}
+                    >
+                      {isTracking ? "Tracking..." : "Track Application"}
+                    </Button>
+                  )}
+                </div>
+              )}
+              <ResumePreview
+                ref={resumeRef}
+                placeholders={placeholders}
+                isLoading={isLoading}
+                isStreaming={isStreaming}
+                onDownloadPdf={handleDownloadPdf}
+                onSaveResume={handleSaveResume}
+                isSaving={isSaving}
+                jobDescription={jobDescriptionRef.current}
+                templateSettings={templateSettings}
+                onPlaceholderChange={(key, value) =>
+                  pushPlaceholders(
+                    placeholders ? { ...placeholders, [key]: value } : null,
+                  )
+                }
+                onBatchPlaceholderChange={(updates) =>
+                  pushPlaceholders(
+                    placeholders ? { ...placeholders, ...updates } : null,
+                  )
+                }
+              />
+            </>
+          )}
+
+          {/* Proposal tab */}
+          {activeTab === "proposal" && (
+            <ProposalPreview
+              proposal={proposalText}
+              isLoading={isProposalLoading}
+              isStreaming={isProposalStreaming}
+              onRefine={handleGenerateProposal}
+            />
+          )}
         </div>
       </div>
     </div>

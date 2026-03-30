@@ -10,25 +10,15 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
+import { ProposalPreview } from "@/components/proposal/proposal-preview";
+import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
-import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import { UserProfileDialog } from "@/components/resume/user-profile-dialog";
-import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuLabel,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { MODELS, DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   Dialog,
   DialogContent,
@@ -37,11 +27,22 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Textarea } from "@/components/ui/textarea";
 import { UserMenu } from "@/components/user-menu";
 import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
+import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
+import { EMPTY_PROFILE, isProfileEmpty, type UserProfile } from "@/lib/profile";
 import {
   getAllResumes,
   getAllSavedResumes,
@@ -54,7 +55,6 @@ import {
   DEFAULT_TEMPLATE,
   type TemplateSettings,
 } from "@/lib/resume/templates";
-import { EMPTY_PROFILE, isProfileEmpty, type UserProfile } from "@/lib/profile";
 
 const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
@@ -128,7 +128,7 @@ export default function Page() {
     } catch {
       // ignore parse errors
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Cache resume state to sessionStorage on change
@@ -166,11 +166,17 @@ export default function Page() {
     setUsageLoaded(false);
     fetch("/api/usage")
       .then((res) => res.json())
-      .then((data: { count: number; subscribed?: boolean; cancelAt?: string | null }) => {
-        setUsageCount(data.count);
-        setIsSubscribed(!!data.subscribed);
-        setCancelAt(data.cancelAt ?? null);
-      })
+      .then(
+        (data: {
+          count: number;
+          subscribed?: boolean;
+          cancelAt?: string | null;
+        }) => {
+          setUsageCount(data.count);
+          setIsSubscribed(!!data.subscribed);
+          setCancelAt(data.cancelAt ?? null);
+        },
+      )
       .catch(() => {})
       .finally(() => setUsageLoaded(true));
   }, [user]);
@@ -344,7 +350,18 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings, selectedModel, userProfile, pushPlaceholders, setPlaceholders]);
+  }, [
+    targetPages,
+    incrementUsage,
+    user,
+    savedGeneratedResumes,
+    customPrompt,
+    templateSettings,
+    selectedModel,
+    userProfile,
+    pushPlaceholders,
+    setPlaceholders,
+  ]);
 
   const handleSaveProfile = useCallback(async (profile: UserProfile) => {
     setIsSavingProfile(true);
@@ -413,7 +430,14 @@ export default function Page() {
         setIsProposalLoading(false);
       }
     },
-    [jobDescriptionRef, userProfile, customPrompt, selectedModel, proposalText, incrementUsage],
+    [
+      jobDescriptionRef,
+      userProfile,
+      customPrompt,
+      selectedModel,
+      proposalText,
+      incrementUsage,
+    ],
   );
 
   const handleDownloadPdf = useCallback(() => {
@@ -475,7 +499,7 @@ export default function Page() {
             <Button
               size="sm"
               variant="ghost"
-              className="text-xs text-muted-foreground"
+              className="text-muted-foreground text-xs"
               onClick={() => {
                 setPlaceholders(null);
                 setResumeTitle("Resume");
@@ -505,7 +529,7 @@ export default function Page() {
         {/* Left panel */}
         <div className="flex w-full flex-col gap-6 lg:gap-8">
           <div className="h-fit w-full">
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-5.5 flex items-center justify-between">
               <h2 className="font-mono">Job Description</h2>
               {hasJobDescription && (
                 <button
@@ -556,7 +580,12 @@ export default function Page() {
                   size="lg"
                   className="flex-1"
                   onClick={() => handleGenerateProposal()}
-                  disabled={isProposalLoading || isProposalStreaming || authLoading || !usageLoaded}
+                  disabled={
+                    isProposalLoading ||
+                    isProposalStreaming ||
+                    authLoading ||
+                    !usageLoaded
+                  }
                 >
                   {isProposalLoading ? "Generating..." : "Generate Proposal"}
                 </Button>
@@ -605,7 +634,10 @@ export default function Page() {
                     disabled={!user}
                     onAcceptSuggestion={(section, newText) => {
                       if (placeholders) {
-                        pushPlaceholders({ ...placeholders, [section]: newText });
+                        pushPlaceholders({
+                          ...placeholders,
+                          [section]: newText,
+                        });
                       }
                     }}
                   />
@@ -618,7 +650,9 @@ export default function Page() {
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
+                        onClick={() =>
+                          setTargetPages((p) => Math.max(1, p - 1))
+                        }
                         disabled={targetPages <= 1}
                         aria-label="Decrease pages"
                       >
@@ -630,7 +664,9 @@ export default function Page() {
                       <button
                         type="button"
                         className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
+                        onClick={() =>
+                          setTargetPages((p) => Math.min(2, p + 1))
+                        }
                         disabled={targetPages >= 2}
                         aria-label="Increase pages"
                       >
@@ -663,9 +699,7 @@ export default function Page() {
                 />
                 <VoiceInputButton
                   onTranscript={(text) =>
-                    setPromptDraft((prev) =>
-                      prev ? `${prev} ${text}` : text,
-                    )
+                    setPromptDraft((prev) => (prev ? `${prev} ${text}` : text))
                   }
                 />
               </div>
@@ -725,10 +759,10 @@ export default function Page() {
                   key={tab}
                   type="button"
                   onClick={() => setActiveTab(tab)}
-                  className={`cursor-pointer border-b-2 pb-1 pr-4 font-mono text-base transition-colors capitalize ${
+                  className={`cursor-pointer border-b-2 pr-4 pb-1 font-mono text-base capitalize transition-colors ${
                     activeTab === tab
                       ? "border-foreground text-foreground"
-                      : "border-transparent text-muted-foreground hover:text-foreground"
+                      : "text-muted-foreground hover:text-foreground border-transparent"
                   }`}
                 >
                   {tab}
@@ -751,7 +785,7 @@ export default function Page() {
                     type="text"
                     value={resumeTitle}
                     onChange={(e) => setResumeTitle(e.target.value)}
-                    className="flex-1 bg-transparent font-mono text-sm outline-none focus:border-b focus:border-foreground/20"
+                    className="focus:border-foreground/20 flex-1 bg-transparent font-mono text-sm outline-none focus:border-b"
                     placeholder="Resume title..."
                   />
                   {user && (
@@ -762,14 +796,21 @@ export default function Page() {
                       disabled={isTracking}
                       onClick={async () => {
                         setIsTracking(true);
-                        const parts = resumeTitle.split("\u2014").map((s) => s.trim());
-                        const position = placeholders.JOB_TITLE || parts[0] || "";
+                        const parts = resumeTitle
+                          .split("\u2014")
+                          .map((s) => s.trim());
+                        const position =
+                          placeholders.JOB_TITLE || parts[0] || "";
                         const company = parts[1] || "";
                         try {
                           await fetch("/api/applications", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ position, company, resume_data: placeholders }),
+                            body: JSON.stringify({
+                              position,
+                              company,
+                              resume_data: placeholders,
+                            }),
                           });
                           router.push("/applications");
                         } catch {
@@ -813,6 +854,7 @@ export default function Page() {
               isLoading={isProposalLoading}
               isStreaming={isProposalStreaming}
               onRefine={handleGenerateProposal}
+              onProposalChange={setProposalText}
             />
           )}
         </div>
@@ -830,7 +872,8 @@ function ModelSelector({
   selectedModelId: string;
   onModelChange: (modelId: string) => void;
 }) {
-  const selectedModel = MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
+  const selectedModel =
+    MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
   const openaiModels = MODELS.filter((m) => m.provider === "openai");
   const anthropicModels = MODELS.filter((m) => m.provider === "anthropic");
 
@@ -915,10 +958,7 @@ function VoiceInputButton({
       aria-label={isListening ? "Stop recording" : "Start voice input"}
     >
       {showLoading ? (
-        <HugeiconsIcon
-          icon={Loading03Icon}
-          className="size-3.5 animate-spin"
-        />
+        <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />
       ) : (
         <HugeiconsIcon
           icon={isListening ? PauseIcon : Mic01Icon}

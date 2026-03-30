@@ -2,7 +2,7 @@
 
 import { Copy01Icon, Tick02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -13,6 +13,7 @@ interface ProposalPreviewProps {
   isLoading: boolean;
   isStreaming: boolean;
   onRefine: (instruction: string) => void;
+  onProposalChange: (text: string) => void;
 }
 
 export function ProposalPreview({
@@ -20,10 +21,27 @@ export function ProposalPreview({
   isLoading,
   isStreaming,
   onRefine,
+  onProposalChange,
 }: ProposalPreviewProps) {
   const [copied, setCopied] = useState(false);
   const [refineText, setRefineText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
+
+  // Seed content on mount (handles tab switching — component unmounts/remounts)
+  useEffect(() => {
+    if (contentRef.current && proposal) {
+      contentRef.current.innerText = proposal;
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // While streaming, push each chunk into the div via the ref.
+  // We never touch it after streaming stops so user edits are preserved.
+  useEffect(() => {
+    if (!isStreaming || !contentRef.current) return;
+    contentRef.current.innerText = proposal;
+  }, [proposal, isStreaming]);
 
   const handleCopy = useCallback(async () => {
     if (!proposal) return;
@@ -94,16 +112,19 @@ export function ProposalPreview({
           </button>
         )}
 
-        {/* Proposal text */}
-        <p
-          className="text-foreground/90 whitespace-pre-wrap text-sm leading-relaxed"
+        {/* Proposal text — editable once streaming is done.
+            No React children — all content is written via the ref to avoid
+            reconciler conflicts with contentEditable. */}
+        <div
+          ref={contentRef}
+          contentEditable={!isStreaming}
+          suppressContentEditableWarning
+          onInput={() => {
+            if (contentRef.current) onProposalChange(contentRef.current.innerText);
+          }}
+          className="text-foreground/90 min-h-8 whitespace-pre-wrap text-sm leading-relaxed outline-none"
           style={{ fontFamily: "Georgia, 'Times New Roman', serif" }}
-        >
-          {proposal}
-          {isStreaming && (
-            <span className="bg-foreground ml-0.5 inline-block h-4 w-0.5 animate-pulse" />
-          )}
-        </p>
+        />
       </div>
 
       {/* Word count */}

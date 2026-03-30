@@ -14,9 +14,20 @@ import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
+import { UserProfileDialog } from "@/components/resume/user-profile-dialog";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuLabel,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { MODELS, DEFAULT_MODEL_ID } from "@/lib/models";
 import {
   Dialog,
   DialogContent,
@@ -42,6 +53,7 @@ import {
   DEFAULT_TEMPLATE,
   type TemplateSettings,
 } from "@/lib/resume/templates";
+import { EMPTY_PROFILE, isProfileEmpty, type UserProfile } from "@/lib/profile";
 
 const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
@@ -82,10 +94,17 @@ export default function Page() {
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [cancelAt, setCancelAt] = useState<string | null>(null);
 
+  // Model selection
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
+
   // Template settings
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_SETTINGS);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+  // User profile
+  const [userProfile, setUserProfile] = useState<UserProfile>(EMPTY_PROFILE);
+  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Load saved generated resumes on mount
   useEffect(() => {
@@ -122,6 +141,17 @@ export default function Page() {
     fetch("/api/template-settings")
       .then((res) => res.json())
       .then((data: TemplateSettings) => setTemplateSettings(data))
+      .catch(() => {});
+  }, [user]);
+
+  // Load user profile when user changes
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/profile")
+      .then((res) => res.json())
+      .then((data: UserProfile | null) => {
+        if (data) setUserProfile(data);
+      })
       .catch(() => {});
   }, [user]);
 
@@ -236,6 +266,8 @@ export default function Page() {
           userEmail: user?.email,
           customPrompt: customPrompt || undefined,
           templateSettings,
+          model: selectedModel,
+          userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
         }),
       });
 
@@ -307,7 +339,23 @@ export default function Page() {
     } finally {
       setIsLoading(false);
     }
-  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings, pushPlaceholders, setPlaceholders]);
+  }, [targetPages, incrementUsage, user, savedGeneratedResumes, customPrompt, templateSettings, selectedModel, userProfile, pushPlaceholders, setPlaceholders]);
+
+  const handleSaveProfile = useCallback(async (profile: UserProfile) => {
+    setIsSavingProfile(true);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(profile),
+      });
+      if (res.ok) setUserProfile(profile);
+    } catch {
+      // silently fail
+    } finally {
+      setIsSavingProfile(false);
+    }
+  }, []);
 
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
@@ -572,7 +620,17 @@ export default function Page() {
             </DialogContent>
           </Dialog>
 
-          <div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-muted-foreground text-xs">Base data</span>
+              <UserProfileDialog
+                profile={userProfile}
+                onSave={handleSaveProfile}
+                isSaving={isSavingProfile}
+                disabled={!user}
+                hasProfile={!isProfileEmpty(userProfile)}
+              />
+            </div>
             <ResumeDropzone
               savedGeneratedResumes={savedGeneratedResumes}
               onSavedResumesChange={setSavedGeneratedResumes}
@@ -623,8 +681,12 @@ export default function Page() {
                 )}
               </>
             ) : (
-              <h2 className="font-mono">Resume</h2>
+              <h2 className="flex-1 font-mono">Resume</h2>
             )}
+            <ModelSelector
+              selectedModelId={selectedModel}
+              onModelChange={setSelectedModel}
+            />
           </div>
           <ResumePreview
             ref={resumeRef}
@@ -650,6 +712,73 @@ export default function Page() {
         </div>
       </div>
     </div>
+  );
+}
+
+// ── Model Selector ────────────────────────────────────────────────────
+
+function ModelSelector({
+  selectedModelId,
+  onModelChange,
+}: {
+  selectedModelId: string;
+  onModelChange: (modelId: string) => void;
+}) {
+  const selectedModel = MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
+  const openaiModels = MODELS.filter((m) => m.provider === "openai");
+  const anthropicModels = MODELS.filter((m) => m.provider === "anthropic");
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="text-muted-foreground hover:text-foreground flex shrink-0 cursor-pointer items-center gap-1 text-xs transition-colors"
+        >
+          <span>{selectedModel.label}</span>
+          <svg
+            className="size-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-auto min-w-40">
+        <DropdownMenuLabel>OpenAI</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {openaiModels.map((model) => (
+            <DropdownMenuItem
+              key={model.id}
+              onSelect={() => onModelChange(model.id)}
+            >
+              {model.label}
+              {model.id === selectedModelId && (
+                <span className="text-primary ml-auto">✓</span>
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuLabel>Anthropic</DropdownMenuLabel>
+        <DropdownMenuGroup>
+          {anthropicModels.map((model) => (
+            <DropdownMenuItem
+              key={model.id}
+              onSelect={() => onModelChange(model.id)}
+            >
+              {model.label}
+              {model.id === selectedModelId && (
+                <span className="text-primary ml-auto">✓</span>
+              )}
+            </DropdownMenuItem>
+          ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

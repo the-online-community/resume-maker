@@ -16,6 +16,7 @@ export interface ProjectEntry {
   name: string;
   stack: string; // comma-separated, e.g. "React, Node.js, PostgreSQL"
   description: string;
+  url?: string;
 }
 
 export interface UserProfile {

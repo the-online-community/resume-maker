@@ -11,6 +11,7 @@ import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
+import { QAView, type QAItem } from "@/components/qa/qa-view";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
 import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
@@ -82,10 +83,12 @@ export default function Page() {
   const [promptDialogOpen, setPromptDialogOpen] = useState(false);
   const [promptDraft, setPromptDraft] = useState("");
   const [resumeTitle, setResumeTitle] = useState("Resume");
-  const [activeTab, setActiveTab] = useState<"resume" | "proposal">("resume");
+  const [activeTab, setActiveTab] = useState<"resume" | "proposal" | "qa">("resume");
   const [proposalText, setProposalText] = useState("");
   const [isProposalLoading, setIsProposalLoading] = useState(false);
   const [isProposalStreaming, setIsProposalStreaming] = useState(false);
+  const [qaItems, setQAItems] = useState<QAItem[]>([]);
+  const [isQALoading, setIsQALoading] = useState(false);
 
   // Saved generated resumes (lifted from dropzone for AI context)
   const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
@@ -440,6 +443,64 @@ export default function Page() {
     ],
   );
 
+  const handleAskQuestion = useCallback(
+    async (question: string) => {
+      const id = crypto.randomUUID();
+      setIsQALoading(true);
+      setQAItems((prev) => [
+        ...prev,
+        { id, question, answer: "", isStreaming: true },
+      ]);
+
+      try {
+        const res = await fetch("/api/qa", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question,
+            jobDescription: jobDescriptionRef.current,
+            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
+            model: selectedModel,
+          }),
+        });
+
+        if (!res.ok) throw new Error("Failed to get answer");
+
+        const reader = res.body!.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+          setQAItems((prev) =>
+            prev.map((item) =>
+              item.id === id ? { ...item, answer: accumulated } : item,
+            ),
+          );
+        }
+
+        setQAItems((prev) =>
+          prev.map((item) =>
+            item.id === id ? { ...item, isStreaming: false } : item,
+          ),
+        );
+      } catch {
+        setQAItems((prev) =>
+          prev.map((item) =>
+            item.id === id
+              ? { ...item, answer: "Failed to generate answer.", isStreaming: false }
+              : item,
+          ),
+        );
+      } finally {
+        setIsQALoading(false);
+      }
+    },
+    [jobDescriptionRef, userProfile, selectedModel],
+  );
+
   const handleDownloadPdf = useCallback(() => {
     const element = resumeRef.current;
     if (!element) return;
@@ -575,7 +636,7 @@ export default function Page() {
                 >
                   {isLoading ? "Tailoring..." : "Tailor Resume"}
                 </Button>
-              ) : (
+              ) : activeTab === "proposal" ? (
                 <Button
                   size="lg"
                   className="flex-1"
@@ -589,7 +650,7 @@ export default function Page() {
                 >
                   {isProposalLoading ? "Generating..." : "Generate Proposal"}
                 </Button>
-              )}
+              ) : null}
 
               {/* Add Prompt — always visible */}
               <Button
@@ -754,7 +815,7 @@ export default function Page() {
           <div className="mb-4 flex items-center justify-between gap-2">
             {/* Tabs */}
             <div className="flex items-center gap-0">
-              {(["resume", "proposal"] as const).map((tab) => (
+              {(["resume", "proposal", "qa"] as const).map((tab) => (
                 <button
                   key={tab}
                   type="button"
@@ -765,7 +826,7 @@ export default function Page() {
                       : "text-muted-foreground hover:text-foreground border-transparent"
                   }`}
                 >
-                  {tab}
+                  {tab === "qa" ? "Q&A" : tab}
                 </button>
               ))}
             </div>
@@ -855,6 +916,22 @@ export default function Page() {
               isStreaming={isProposalStreaming}
               onRefine={handleGenerateProposal}
               onProposalChange={setProposalText}
+            />
+          )}
+
+          {/* Q&A tab */}
+          {activeTab === "qa" && (
+            <QAView
+              items={qaItems}
+              isLoading={isQALoading}
+              onAsk={handleAskQuestion}
+              onAnswerChange={(id, answer) => {
+                setQAItems((prev) =>
+                  prev.map((item) =>
+                    item.id === id ? { ...item, answer } : item,
+                  ),
+                );
+              }}
             />
           )}
         </div>

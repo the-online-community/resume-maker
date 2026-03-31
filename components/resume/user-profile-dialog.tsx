@@ -476,6 +476,16 @@ export function UserProfileDialog({
                     </div>
                     <div className="space-y-1">
                       <label className="text-muted-foreground text-xs">
+                        Project URL
+                      </label>
+                      <Input
+                        value={entry.url ?? ""}
+                        onChange={(e) => updateProject(i, "url", e.target.value)}
+                        placeholder="https://github.com/you/project"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-muted-foreground text-xs">
                         Short Description
                       </label>
                       <Textarea

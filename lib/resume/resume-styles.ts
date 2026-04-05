@@ -39,16 +39,21 @@ export const RESUME_CSS = `
     flex-wrap: wrap;
     align-items: center;
     gap: 4px 0;
+    overflow: hidden;
+  }
+
+  .resume-contact-inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 0;
+    margin-left: -16px;
   }
 
   .resume-contact-item::before {
     content: "·";
     color: #a3a3a3;
     padding: 0 6px;
-  }
-
-  .resume-contact-item:first-child::before {
-    display: none;
   }
 
   .resume-link {

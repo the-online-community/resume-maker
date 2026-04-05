@@ -409,6 +409,7 @@ export function ResumeContent({
           </p>
         )}
         <div className="resume-contact">
+         <div className="resume-contact-inner">
           {settings.headerFields.map((fieldKey) =>
             LINK_FIELDS.has(fieldKey) ? (
               <HeaderLink
@@ -466,6 +467,7 @@ export function ResumeContent({
               }}
             />
           )}
+         </div>
         </div>
       </div>
 

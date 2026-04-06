@@ -131,6 +131,110 @@ function EditableCell({
   );
 }
 
+// ── Autocomplete Cell (editable with dropdown suggestions) ──
+
+function AutocompleteCell({
+  value,
+  suggestions,
+  placeholder,
+  onSave,
+}: {
+  value: string;
+  suggestions: string[];
+  placeholder: string;
+  onSave: (val: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const filtered = suggestions.filter(
+    (s) => s.toLowerCase().includes(draft.toLowerCase()) && s !== draft,
+  );
+
+  const handleSave = (val?: string) => {
+    const final = val ?? draft;
+    setEditing(false);
+    setShowDropdown(false);
+    if (final !== value) onSave(final);
+  };
+
+  const handleSelect = (item: string) => {
+    setDraft(item);
+    handleSave(item);
+  };
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!editing) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        handleSave();
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editing, draft, value]);
+
+  if (!editing) {
+    return (
+      <span
+        className={`block cursor-text truncate ${!value ? "text-muted-foreground italic" : ""}`}
+        onClick={() => {
+          setDraft(value);
+          setEditing(true);
+          setShowDropdown(true);
+        }}
+        title={value || placeholder}
+      >
+        {value || placeholder}
+      </span>
+    );
+  }
+
+  return (
+    <div ref={containerRef} className="relative">
+      <Input
+        autoFocus
+        value={draft}
+        onChange={(e) => {
+          setDraft(e.target.value);
+          setShowDropdown(true);
+        }}
+        onFocus={() => setShowDropdown(true)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") handleSave();
+          if (e.key === "Escape") {
+            setEditing(false);
+            setShowDropdown(false);
+          }
+        }}
+        className="h-7 rounded-none border-none bg-transparent px-1 text-xs shadow-none focus-visible:ring-1"
+        placeholder={placeholder}
+      />
+      {showDropdown && filtered.length > 0 && (
+        <div className="bg-popover absolute top-full left-0 z-50 mt-1 max-h-40 w-40 overflow-y-auto rounded border shadow-md">
+          {filtered.map((item) => (
+            <button
+              key={item}
+              type="button"
+              className="hover:bg-muted w-full cursor-pointer px-2 py-1.5 text-left text-xs"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                handleSelect(item);
+              }}
+            >
+              {item}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Resume Preview Dialog ──
 
 function ResumePreviewDialog({
@@ -455,6 +559,26 @@ export default function ApplicationsPage() {
   const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
   const [adding, setAdding] = useState(false);
 
+  // Unique cities derived from existing application data
+  const uniqueCities = useMemo(() => {
+    const set = new Set<string>();
+    for (const app of applications) {
+      const city = app.notes?.trim();
+      if (city) set.add(city);
+    }
+    return [...set].sort();
+  }, [applications]);
+
+  // Unique platforms derived from existing application data
+  const uniquePlatforms = useMemo(() => {
+    const set = new Set<string>();
+    for (const app of applications) {
+      const platform = app.platform?.trim();
+      if (platform) set.add(platform);
+    }
+    return [...set].sort();
+  }, [applications]);
+
   const fetchApplications = useCallback(async () => {
     try {
       const res = await fetch("/api/applications");
@@ -699,8 +823,9 @@ export default function ApplicationsPage() {
                   />
                 </td>
                 <td className="min-w-[100px] px-3 py-2">
-                  <EditableCell
+                  <AutocompleteCell
                     value={app.platform || ""}
+                    suggestions={uniquePlatforms}
                     placeholder="Platform"
                     onSave={(v) => handleUpdate(app.id, "platform", v)}
                   />
@@ -753,8 +878,9 @@ export default function ApplicationsPage() {
                   </button>
                 </td>
                 <td className="min-w-[150px] px-3 py-2">
-                  <EditableCell
+                  <AutocompleteCell
                     value={app.notes || ""}
+                    suggestions={uniqueCities}
                     placeholder="City"
                     onSave={(v) => handleUpdate(app.id, "notes", v)}
                   />

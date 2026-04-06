@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,6 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 
@@ -187,10 +186,30 @@ export function ResumeAnalyzerDialog({
 }: ResumeAnalyzerDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
   const [acceptedIds, setAcceptedIds] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const stopProgress = useCallback(() => {
+    if (progressRef.current) {
+      clearInterval(progressRef.current);
+      progressRef.current = null;
+    }
+  }, []);
+
+  const startProgress = useCallback(() => {
+    stopProgress();
+    let p = 0;
+    setProgress(0);
+    progressRef.current = setInterval(() => {
+      p += p < 50 ? 6 : p < 80 ? 3 : 0.5;
+      p = Math.min(p, 95);
+      setProgress(Math.round(p));
+    }, 200);
+  }, [stopProgress]);
 
   const analyze = useCallback(async () => {
     if (!placeholders || !jobDescription) return;
@@ -200,6 +219,7 @@ export function ResumeAnalyzerDialog({
     setDismissedIds(new Set());
     setAcceptedIds(new Set());
     setError(null);
+    startProgress();
 
     try {
       const res = await fetch("/api/analyze-resume", {
@@ -211,23 +231,30 @@ export function ResumeAnalyzerDialog({
       if (!res.ok) throw new Error("Analysis failed");
 
       const data = (await res.json()) as AnalysisResult;
+      setProgress(100);
       setResult(data);
     } catch {
       setError("Failed to analyze resume. Please try again.");
     } finally {
+      stopProgress();
       setIsLoading(false);
     }
-  }, [placeholders, jobDescription]);
+  }, [placeholders, jobDescription, startProgress, stopProgress]);
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      setOpen(nextOpen);
-      if (nextOpen && !result && !isLoading) {
-        analyze();
-      }
-    },
-    [analyze, result, isLoading],
-  );
+  const handleButtonClick = useCallback(() => {
+    if (result) {
+      // Analysis already done — open the dialog
+      setOpen(true);
+    } else if (!isLoading) {
+      // Start analysis in background
+      analyze();
+    }
+  }, [result, isLoading, analyze]);
+
+  const handleReanalyze = useCallback(() => {
+    setOpen(false);
+    analyze();
+  }, [analyze]);
 
   const handleAccept = useCallback(
     (suggestion: AnalysisSuggestion) => {
@@ -249,115 +276,115 @@ export function ResumeAnalyzerDialog({
   const acceptedCount = acceptedIds.size;
   const totalCount = result?.suggestions.length ?? 0;
 
+  const buttonLabel = isLoading
+    ? `Analyzing ${progress}%`
+    : result
+      ? `Score: ${result.score} — View`
+      : "Analyze";
+
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogTrigger asChild>
-        <Button
-          size="lg"
-          variant="outline"
-          className="shrink-0"
-          disabled={disabled || !placeholders || !jobDescription || isLoading}
-        >
-          <SparkleIcon
-            className={`mr-1.5 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-          />
-          {isLoading ? "Analyzing..." : "Analyze"}
-        </Button>
-      </DialogTrigger>
-      <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>Resume Analysis</DialogTitle>
-          <DialogDescription>
-            How well your resume matches the job description
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Button
+        size="lg"
+        variant={result ? "default" : "outline"}
+        className="shrink-0"
+        disabled={disabled || !placeholders || !jobDescription}
+        onClick={handleButtonClick}
+      >
+        <SparkleIcon
+          className={`mr-1.5 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
+        />
+        {buttonLabel}
+      </Button>
 
-        {isLoading && (
-          <div className="flex flex-col items-center justify-center gap-3 py-12">
-            <SparkleIcon className="text-primary h-8 w-8 animate-spin" />
-            <p className="text-muted-foreground text-sm">
-              Analyzing your resume...
-            </p>
-          </div>
-        )}
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Resume Analysis</DialogTitle>
+            <DialogDescription>
+              How well your resume matches the job description
+            </DialogDescription>
+          </DialogHeader>
 
-        {error && (
-          <div className="py-8 text-center">
-            <p className="text-destructive text-sm">{error}</p>
-            <Button
-              size="sm"
-              variant="outline"
-              className="mt-3"
-              onClick={analyze}
-            >
-              Try Again
-            </Button>
-          </div>
-        )}
-
-        {result && !isLoading && (
-          <div className="space-y-4">
-            {/* Score + Re-analyze */}
-            <div className="flex items-center justify-between">
-              <ScoreBadge score={result.score} />
+          {error && (
+            <div className="py-8 text-center">
+              <p className="text-destructive text-sm">{error}</p>
               <Button
                 size="sm"
                 variant="outline"
-                className="h-7 text-xs"
-                onClick={analyze}
+                className="mt-3"
+                onClick={handleReanalyze}
               >
-                Re-analyze
+                Try Again
               </Button>
             </div>
+          )}
 
-            {/* Summary */}
-            <p className="text-muted-foreground text-sm leading-relaxed">
-              {result.summary}
-            </p>
+          {result && (
+            <div className="space-y-4">
+              {/* Score + Re-analyze */}
+              <div className="flex items-center justify-between">
+                <ScoreBadge score={result.score} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs"
+                  onClick={handleReanalyze}
+                  disabled={isLoading}
+                >
+                  Re-analyze
+                </Button>
+              </div>
 
-            <Separator />
-
-            {/* Suggestions header */}
-            <div className="flex items-center justify-between">
-              <p className="text-sm font-medium">
-                Suggestions
-                {totalCount > 0 && (
-                  <span className="text-muted-foreground ml-1.5 font-normal">
-                    {acceptedCount > 0
-                      ? `${acceptedCount}/${totalCount} applied`
-                      : `${visibleSuggestions.length} remaining`}
-                  </span>
-                )}
+              {/* Summary */}
+              <p className="text-muted-foreground text-sm leading-relaxed">
+                {result.summary}
               </p>
-              {visibleSuggestions.length === 0 && totalCount > 0 && (
-                <Badge variant="secondary" className="text-xs">
-                  All done ✓
-                </Badge>
+
+              <Separator />
+
+              {/* Suggestions header */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm font-medium">
+                  Suggestions
+                  {totalCount > 0 && (
+                    <span className="text-muted-foreground ml-1.5 font-normal">
+                      {acceptedCount > 0
+                        ? `${acceptedCount}/${totalCount} applied`
+                        : `${visibleSuggestions.length} remaining`}
+                    </span>
+                  )}
+                </p>
+                {visibleSuggestions.length === 0 && totalCount > 0 && (
+                  <Badge variant="secondary" className="text-xs">
+                    All done ✓
+                  </Badge>
+                )}
+              </div>
+
+              {/* Suggestion cards */}
+              {visibleSuggestions.length > 0 ? (
+                <div className="space-y-3">
+                  {visibleSuggestions.map((suggestion) => (
+                    <SuggestionCard
+                      key={suggestion.id}
+                      suggestion={suggestion}
+                      onAccept={() => handleAccept(suggestion)}
+                      onDismiss={() => handleDismiss(suggestion.id)}
+                    />
+                  ))}
+                </div>
+              ) : (
+                totalCount === 0 && (
+                  <p className="text-muted-foreground py-4 text-center text-sm">
+                    No suggestions — your resume looks great!
+                  </p>
+                )
               )}
             </div>
-
-            {/* Suggestion cards */}
-            {visibleSuggestions.length > 0 ? (
-              <div className="space-y-3">
-                {visibleSuggestions.map((suggestion) => (
-                  <SuggestionCard
-                    key={suggestion.id}
-                    suggestion={suggestion}
-                    onAccept={() => handleAccept(suggestion)}
-                    onDismiss={() => handleDismiss(suggestion.id)}
-                  />
-                ))}
-              </div>
-            ) : (
-              totalCount === 0 && (
-                <p className="text-muted-foreground py-4 text-center text-sm">
-                  No suggestions — your resume looks great!
-                </p>
-              )
-            )}
-          </div>
-        )}
-      </DialogContent>
-    </Dialog>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }

@@ -7,6 +7,6 @@
  * Print whitespace comes from @page margins.
  */
 export const CONTENT_WIDTH = 720;
-export const PAGE_HEIGHT = 970;
+export const PAGE_HEIGHT = 1020;
 export const PAGE_PADDING = 32;
 export const FRAME_WIDTH = CONTENT_WIDTH + PAGE_PADDING * 2; // 784

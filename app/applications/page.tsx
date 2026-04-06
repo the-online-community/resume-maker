@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 
 import { FRAME_WIDTH } from "@/components/resume/constants";
@@ -367,6 +367,83 @@ function AddRowForm({
   );
 }
 
+// ── Analytics Bar ──
+
+function AnalyticsBar({ applications }: { applications: Application[] }) {
+  const stats = useMemo(() => {
+    const now = new Date();
+    const todayStr = now.toISOString().slice(0, 10);
+
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+
+    const weekAgo = new Date(now);
+    weekAgo.setDate(weekAgo.getDate() - 7);
+
+    const monthAgo = new Date(now);
+    monthAgo.setMonth(monthAgo.getMonth() - 1);
+
+    let today = 0;
+    let yesterdayCount = 0;
+    let week = 0;
+    let month = 0;
+
+    // Count top cities
+    const cityMap = new Map<string, number>();
+
+    for (const app of applications) {
+      const date = app.applied_at;
+      if (date === todayStr) today++;
+      if (date === yesterdayStr) yesterdayCount++;
+      if (date >= weekAgo.toISOString().slice(0, 10)) week++;
+      if (date >= monthAgo.toISOString().slice(0, 10)) month++;
+
+      const city = app.notes?.trim();
+      if (city) {
+        cityMap.set(city, (cityMap.get(city) || 0) + 1);
+      }
+    }
+
+    const topCities = [...cityMap.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    return { today, yesterday: yesterdayCount, week, month, all: applications.length, topCities };
+  }, [applications]);
+
+  return (
+    <div className="mb-4 flex flex-wrap items-center gap-6">
+      <div className="flex items-center gap-4">
+        {[
+          { label: "Today", value: stats.today },
+          { label: "Yesterday", value: stats.yesterday },
+          { label: "This Week", value: stats.week },
+          { label: "This Month", value: stats.month },
+          { label: "All Time", value: stats.all },
+        ].map(({ label, value }) => (
+          <div key={label} className="text-center">
+            <p className="text-foreground text-lg font-bold tabular-nums">{value}</p>
+            <p className="text-muted-foreground text-[10px]">{label}</p>
+          </div>
+        ))}
+      </div>
+      {stats.topCities.length > 0 && (
+        <div className="border-l pl-4">
+          <p className="text-muted-foreground mb-1 text-[10px]">Top Cities</p>
+          <div className="flex flex-wrap gap-1.5">
+            {stats.topCities.map(([city, count]) => (
+              <Badge key={city} variant="secondary" className="text-[10px]">
+                {city} ({count})
+              </Badge>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main Page ──
 
 export default function ApplicationsPage() {
@@ -480,7 +557,7 @@ export default function ApplicationsPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-muted/50 border-b">
-                {["#", "Date", "Position", "Company", "Platform", "Link", "Status", "Resume", "Notes", ""].map((h) => (
+                {["#", "Date", "Position", "Company", "Platform", "Link", "Status", "Resume", "City", ""].map((h) => (
                   <th key={h} className="text-muted-foreground px-3 py-2.5 text-left font-medium">{h}</th>
                 ))}
               </tr>
@@ -543,6 +620,11 @@ export default function ApplicationsPage() {
         </div>
       </div>
 
+      {/* Analytics */}
+      {applications.length > 0 && (
+        <AnalyticsBar applications={applications} />
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto border">
         <table className="w-full text-xs">
@@ -573,7 +655,7 @@ export default function ApplicationsPage() {
                 Resume
               </th>
               <th className="text-muted-foreground px-3 py-2.5 text-left font-medium">
-                Notes
+                City
               </th>
               <th className="text-muted-foreground px-3 py-2.5 text-left font-medium" />
             </tr>
@@ -673,7 +755,7 @@ export default function ApplicationsPage() {
                 <td className="min-w-[150px] px-3 py-2">
                   <EditableCell
                     value={app.notes || ""}
-                    placeholder="Notes"
+                    placeholder="City"
                     onSave={(v) => handleUpdate(app.id, "notes", v)}
                   />
                 </td>

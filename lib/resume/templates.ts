@@ -28,6 +28,8 @@ export const templates: ResumeTemplate[] = [
       "EXPERIENCE",
       "EDUCATION",
       "SKILLS",
+      "CERTIFICATIONS",
+      "LANGUAGES",
     ],
   },
   {
@@ -46,6 +48,7 @@ export const templates: ResumeTemplate[] = [
       "EDUCATION",
       "SKILLS",
       "CERTIFICATIONS",
+      "LANGUAGES",
     ],
   },
   {
@@ -63,6 +66,8 @@ export const templates: ResumeTemplate[] = [
       "EXPERIENCE",
       "EDUCATION",
       "SKILLS",
+      "CERTIFICATIONS",
+      "LANGUAGES",
     ],
   },
 ];

@@ -97,9 +97,9 @@ export function TemplateSettingsDialog({
     (s) => !enabledSections.includes(s.key),
   );
   const orderedSections = [
-    ...enabledSections.map(
-      (key) => ALL_SECTIONS.find((s) => s.key === key)!,
-    ),
+    ...enabledSections
+      .map((key) => ALL_SECTIONS.find((s) => s.key === key))
+      .filter((s): s is (typeof ALL_SECTIONS)[number] => s !== undefined),
     ...disabledSections,
   ];
 

@@ -44,8 +44,13 @@ export function useSpeechToText({
 }: UseSpeechToTextOptions) {
   const [isListening, setIsListening] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [isSupported] = useState(() => getSpeechRecognition() !== null);
+  const [isSupported, setIsSupported] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
+
+  // Defer browser check to after mount to avoid hydration mismatch
+  useEffect(() => {
+    setIsSupported(getSpeechRecognition() !== null);
+  }, []);
   const onTranscriptRef = useRef(onTranscript);
 
   // Keep callback ref fresh

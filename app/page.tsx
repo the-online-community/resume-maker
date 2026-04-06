@@ -1,15 +1,10 @@
 "use client";
 
-import {
-  Loading03Icon,
-  Mic01Icon,
-  PauseIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
+import { JobDrawer } from "@/components/job-drawer/job-drawer";
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import { QAView, type QAItem } from "@/components/qa/qa-view";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
@@ -21,14 +16,6 @@ import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuGroup,
@@ -37,9 +24,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Textarea } from "@/components/ui/textarea";
 import { UserMenu } from "@/components/user-menu";
-import { useSpeechToText } from "@/hooks/use-speech-to-text";
 import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
@@ -80,8 +65,7 @@ export default function Page() {
   const [isSaving, setIsSaving] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
-  const [promptDialogOpen, setPromptDialogOpen] = useState(false);
-  const [promptDraft, setPromptDraft] = useState("");
+  const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
   const [resumeTitle, setResumeTitle] = useState("Resume");
   const [activeTab, setActiveTab] = useState<"resume" | "proposal" | "qa">("resume");
   const [proposalText, setProposalText] = useState("");
@@ -209,7 +193,7 @@ export default function Page() {
     }
   }, []);
 
-  const handleTailor = useCallback(async () => {
+  const handleTailor = useCallback(async (promptOverride?: string) => {
     const jobDescription = jobDescriptionRef.current;
 
     if (!jobDescription.trim()) {
@@ -278,7 +262,7 @@ export default function Page() {
           targetPages,
           userName: user?.user_metadata?.full_name || user?.user_metadata?.name,
           userEmail: user?.email,
-          customPrompt: customPrompt || undefined,
+          customPrompt: (promptOverride ?? customPrompt) || undefined,
           templateSettings,
           model: selectedModel,
           userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
@@ -551,6 +535,18 @@ export default function Page() {
   }, [placeholders, resumeTitle]);
 
   return (
+    <>
+    <JobDrawer
+      open={jobDrawerOpen}
+      onClose={() => setJobDrawerOpen(false)}
+      jobDescription={jobDescriptionRef.current}
+      userProfile={userProfile}
+      model={selectedModel}
+      onWriteResume={(instructions) => {
+        setJobDrawerOpen(false);
+        handleTailor(instructions || undefined);
+      }}
+    />
     <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
       {/* Header */}
       <div className="mb-6 flex items-center justify-between lg:mb-8">
@@ -592,15 +588,27 @@ export default function Page() {
           <div className="h-fit w-full">
             <div className="mb-5.5 flex items-center justify-between">
               <h2 className="font-mono">Job Description</h2>
-              {hasJobDescription && (
-                <button
-                  type="button"
-                  onClick={() => editorResetRef.current?.()}
-                  className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
-                >
-                  Reset
-                </button>
-              )}
+              <div className="flex items-center gap-2">
+                {hasJobDescription && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 text-xs"
+                    onClick={() => setJobDrawerOpen(true)}
+                  >
+                    AI ✦
+                  </Button>
+                )}
+                {hasJobDescription && (
+                  <button
+                    type="button"
+                    onClick={() => editorResetRef.current?.()}
+                    className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
             </div>
             <TextEditor
               onTextChange={(text) => {
@@ -631,7 +639,7 @@ export default function Page() {
                 <Button
                   size="lg"
                   className="flex-1"
-                  onClick={handleTailor}
+                  onClick={() => handleTailor()}
                   disabled={isLoading || authLoading || !usageLoaded}
                 >
                   {isLoading ? "Tailoring..." : "Tailor Resume"}
@@ -651,19 +659,6 @@ export default function Page() {
                   {isProposalLoading ? "Generating..." : "Generate Proposal"}
                 </Button>
               ) : null}
-
-              {/* Add Prompt — always visible */}
-              <Button
-                size="lg"
-                variant={customPrompt ? "default" : "outline"}
-                className="shrink-0"
-                onClick={() => {
-                  setPromptDraft(customPrompt);
-                  setPromptDialogOpen(true);
-                }}
-              >
-                {customPrompt ? "Prompt ✓" : "Add Prompt"}
-              </Button>
 
               {/* Resume-only controls */}
               {activeTab === "resume" && (
@@ -739,56 +734,6 @@ export default function Page() {
               )}
             </div>
           )}
-
-          {/* Custom Prompt Dialog */}
-          <Dialog open={promptDialogOpen} onOpenChange={setPromptDialogOpen}>
-            <DialogContent className="sm:max-w-md">
-              <DialogHeader>
-                <DialogTitle>Custom Prompt</DialogTitle>
-                <DialogDescription>
-                  Add extra instructions for the AI when generating your resume.
-                  For example: &quot;Focus on leadership experience&quot; or
-                  &quot;Use a more formal tone&quot;.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="relative">
-                <Textarea
-                  value={promptDraft}
-                  onChange={(e) => setPromptDraft(e.target.value)}
-                  placeholder="e.g. Focus on backend engineering skills, emphasize cloud experience..."
-                  className="min-h-32 pr-10"
-                />
-                <VoiceInputButton
-                  onTranscript={(text) =>
-                    setPromptDraft((prev) => (prev ? `${prev} ${text}` : text))
-                  }
-                />
-              </div>
-              <DialogFooter className="gap-2">
-                {customPrompt && (
-                  <Button
-                    variant="outline"
-                    className="text-destructive"
-                    onClick={() => {
-                      setCustomPrompt("");
-                      setPromptDraft("");
-                      setPromptDialogOpen(false);
-                    }}
-                  >
-                    Clear
-                  </Button>
-                )}
-                <Button
-                  onClick={() => {
-                    setCustomPrompt(promptDraft.trim());
-                    setPromptDialogOpen(false);
-                  }}
-                >
-                  Save
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -937,6 +882,7 @@ export default function Page() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 
@@ -1008,40 +954,3 @@ function ModelSelector({
   );
 }
 
-// ── Voice Input Button ────────────────────────────────────────────────
-
-function VoiceInputButton({
-  onTranscript,
-}: {
-  onTranscript: (text: string) => void;
-}) {
-  const { isListening, isProcessing, isSupported, toggle } = useSpeechToText({
-    onTranscript,
-  });
-
-  if (!isSupported) return null;
-
-  const showLoading = isListening && isProcessing;
-
-  return (
-    <button
-      type="button"
-      onClick={toggle}
-      className={`absolute right-2 bottom-2 flex size-7 cursor-pointer items-center justify-center rounded-full transition-all ${
-        isListening
-          ? "bg-destructive text-white"
-          : "text-muted-foreground hover:text-foreground hover:bg-muted"
-      }`}
-      aria-label={isListening ? "Stop recording" : "Start voice input"}
-    >
-      {showLoading ? (
-        <HugeiconsIcon icon={Loading03Icon} className="size-3.5 animate-spin" />
-      ) : (
-        <HugeiconsIcon
-          icon={isListening ? PauseIcon : Mic01Icon}
-          className="size-3.5"
-        />
-      )}
-    </button>
-  );
-}

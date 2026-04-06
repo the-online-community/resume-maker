@@ -280,6 +280,7 @@ function AddRowForm({
 
   return (
     <tr className="bg-muted/30 border-b">
+      <td className="text-muted-foreground px-3 py-2">—</td>
       <td className="px-3 py-2">
         <span className="text-muted-foreground text-xs">Today</span>
       </td>
@@ -479,7 +480,7 @@ export default function ApplicationsPage() {
           <table className="w-full text-xs">
             <thead>
               <tr className="bg-muted/50 border-b">
-                {["Date", "Position", "Company", "Platform", "Link", "Status", "Resume", "Notes", ""].map((h) => (
+                {["#", "Date", "Position", "Company", "Platform", "Link", "Status", "Resume", "Notes", ""].map((h) => (
                   <th key={h} className="text-muted-foreground px-3 py-2.5 text-left font-medium">{h}</th>
                 ))}
               </tr>
@@ -487,7 +488,7 @@ export default function ApplicationsPage() {
             <tbody>
               {Array.from({ length: 5 }).map((_, i) => (
                 <tr key={i} className="border-b">
-                  {Array.from({ length: 9 }).map((_, j) => (
+                  {Array.from({ length: 10 }).map((_, j) => (
                     <td key={j} className="px-3 py-2.5">
                       <Skeleton className="h-4 w-full" />
                     </td>
@@ -547,6 +548,9 @@ export default function ApplicationsPage() {
         <table className="w-full text-xs">
           <thead>
             <tr className="bg-muted/50 border-b">
+              <th className="text-muted-foreground w-[40px] px-3 py-2.5 text-left font-medium">
+                #
+              </th>
               <th className="text-muted-foreground px-3 py-2.5 text-left font-medium">
                 Date
               </th>
@@ -582,11 +586,14 @@ export default function ApplicationsPage() {
                 adding={adding}
               />
             )}
-            {applications.map((app) => (
+            {applications.map((app, index) => (
               <tr
                 key={app.id}
                 className={`group border-b transition-colors hover:bg-muted/30 ${busyIds.has(app.id) ? "pointer-events-none opacity-50" : ""}`}
               >
+                <td className="text-muted-foreground w-[40px] px-3 py-2 tabular-nums">
+                  {applications.length - index}
+                </td>
                 <td className="w-[100px] px-3 py-2">
                   <EditableCell
                     value={app.applied_at}

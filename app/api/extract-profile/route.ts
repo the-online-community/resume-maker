@@ -32,7 +32,9 @@ const SYSTEM_PROMPT = `You are a resume parser. Given raw text extracted from a 
     {
       "degree": "B.S. Computer Science",
       "institution": "University Name",
-      "year": "2019"
+      "start_year": "2015 (optional — only if mentioned in resume)",
+      "year": "2019",
+      "achievement": "GPA 3.8, Dean's List (optional — only if mentioned in resume)"
     }
   ],
   "projects": [

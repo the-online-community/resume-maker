@@ -36,7 +36,6 @@ Only ask questions that are relevant — skip any you can already answer from th
 Use both the code analysis AND my answers to produce the best possible highlights — grounded in real facts, with real numbers where I provided them.
 
 {
-  "skills": ["React", "TypeScript", "Node.js", "PostgreSQL"],
   "projects": [
     {
       "name": "Project Name",
@@ -53,12 +52,10 @@ Use both the code analysis AND my answers to produce the best possible highlight
 
 Rules:
 - For "highlights": write resume-ready bullet points — start with action verbs, include metrics I provided, focus on impact not just features
-- For "skills": list every technology, framework, library, tool, and language actually used in the codebase
-- Do not include a "url" field — I will add it myself
+- Do not include a "url" or "skills" field — I manage skills separately
 - Do not invent numbers or metrics I didn't provide — if I didn't give a number, describe the impact qualitatively`;
 
 interface ParsedImport {
-  skills?: string[];
   projects?: Omit<ProjectEntry, "id">[];
 }
 
@@ -211,9 +208,9 @@ export function ProfileProjectsTab({
 }: ProfileProjectsTabProps) {
   const projects = draft.projects ?? [];
 
-  // Track which cards are open — new cards open by default
+  // Track which cards are open — all collapsed by default
   const [openCards, setOpenCards] = useState<Set<number>>(
-    () => new Set(projects.map((_, i) => i)),
+    () => new Set<number>(),
   );
 
   // AI Import state
@@ -287,22 +284,13 @@ export function ProfileProjectsTab({
 
       const data = JSON.parse(text) as ParsedImport;
 
-      if (!data.projects && !data.skills) {
-        setParseError('JSON must have at least a "projects" or "skills" array.');
-        return;
-      }
-      if (data.projects && !Array.isArray(data.projects)) {
-        setParseError('"projects" must be an array.');
-        return;
-      }
-      if (data.skills && !Array.isArray(data.skills)) {
-        setParseError('"skills" must be an array.');
+      if (!data.projects || !Array.isArray(data.projects)) {
+        setParseError('JSON must have a "projects" array.');
         return;
       }
 
       setParsed({
-        skills: data.skills ?? [],
-        projects: data.projects ?? [],
+        projects: data.projects,
       });
     } catch {
       setParseError(
@@ -323,16 +311,10 @@ export function ProfileProjectsTab({
       highlights: p.highlights,
     }));
 
-    // Merge skills — only add new ones (case-insensitive dedup)
-    const existingSkills = new Set(draft.skills.map((s) => s.toLowerCase()));
-    const newSkills = (parsed.skills ?? []).filter(
-      (s) => s.trim() && !existingSkills.has(s.trim().toLowerCase()),
-    );
-
     const startIndex = projects.length;
+
     onChange({
       ...draft,
-      skills: [...draft.skills, ...newSkills],
       projects: [...projects, ...newProjects],
     });
 
@@ -345,10 +327,7 @@ export function ProfileProjectsTab({
       return next;
     });
 
-    const parts: string[] = [];
-    if (newSkills.length) parts.push(`${newSkills.length} skills`);
-    if (newProjects.length) parts.push(`${newProjects.length} projects`);
-    toast.success(`Imported ${parts.join(" and ")}`);
+    toast.success(`Imported ${newProjects.length} project${newProjects.length !== 1 ? "s" : ""}`);
 
     // Reset
     setJsonInput("");
@@ -452,27 +431,12 @@ export function ProfileProjectsTab({
           {parsed && (
             <div className="space-y-3 border p-3">
               <h4 className="text-sm font-medium">Preview</h4>
-              <div className="flex gap-4 text-xs">
-                {(parsed.skills ?? []).length > 0 && (
-                  <span className="text-muted-foreground">
-                    <span className="text-foreground font-medium">
-                      {parsed.skills!.length}
-                    </span>{" "}
-                    skills
-                  </span>
-                )}
-                {(parsed.projects ?? []).length > 0 && (
-                  <span className="text-muted-foreground">
-                    <span className="text-foreground font-medium">
-                      {parsed.projects!.length}
-                    </span>{" "}
-                    projects
-                  </span>
-                )}
-              </div>
-              {(parsed.skills ?? []).length > 0 && (
-                <p className="text-xs">{parsed.skills!.join(", ")}</p>
-              )}
+              <p className="text-muted-foreground text-xs">
+                <span className="text-foreground font-medium">
+                  {(parsed.projects ?? []).length}
+                </span>{" "}
+                project{(parsed.projects ?? []).length !== 1 ? "s" : ""}
+              </p>
               {(parsed.projects ?? []).map((p, i) => (
                 <div key={i} className="text-xs">
                   <span className="font-medium">{p.name}</span>

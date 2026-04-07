@@ -1,7 +1,7 @@
 "use client";
 
 import { Badge } from "@/components/ui/badge";
-import { isProfileEmpty, type UserProfile } from "@/lib/profile";
+import { countSkills, isProfileEmpty, type UserProfile } from "@/lib/profile";
 
 interface ProfileMeTabProps {
   draft: UserProfile;
@@ -98,31 +98,48 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
       )}
 
       {/* Skills */}
-      {draft.skills.length > 0 && (
+      {countSkills(draft.skills) > 0 && (
         <div className="space-y-2">
           <SectionHeader
             title="Skills"
             tab="skills"
             onTabChange={onTabChange}
           />
-          <div className="flex flex-wrap gap-1.5">
-            {draft.skills.map((skill, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
-                {skill}
-              </Badge>
-            ))}
+          <div className="space-y-2">
+            {Object.entries(draft.skills).map(
+              ([category, categorySkills]) =>
+                categorySkills.length > 0 && (
+                  <div key={category}>
+                    <p className="text-muted-foreground mb-1 text-[10px] font-medium uppercase">
+                      {category}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {categorySkills.map((skill, i) => (
+                        <Badge key={i} variant="secondary" className="text-xs">
+                          {skill}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                ),
+            )}
           </div>
         </div>
       )}
 
       {/* Experience */}
-      {draft.experience.length > 0 && (
+      {(draft.experience.length > 0 || draft.years_of_experience != null) && (
         <div className="space-y-2">
           <SectionHeader
             title="Experience"
             tab="experience"
             onTabChange={onTabChange}
           />
+          {draft.years_of_experience != null && (
+            <p className="text-muted-foreground text-xs">
+              {draft.years_of_experience}+ years of experience
+            </p>
+          )}
           <div className="space-y-2">
             {draft.experience.map((exp, i) => (
               <div key={i} className="text-sm">
@@ -140,6 +157,18 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
                     .filter(Boolean)
                     .join(" · ")}
                 </p>
+                {(exp.projects?.length ?? 0) > 0 && (
+                  <div className="mt-0.5 flex flex-wrap gap-1">
+                    {exp.projects!.map((name) => (
+                      <span
+                        key={name}
+                        className="bg-secondary text-secondary-foreground px-1.5 py-0.5 text-[10px]"
+                      >
+                        {name}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -159,8 +188,18 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
               <div key={i} className="text-sm">
                 <p className="font-medium">{edu.degree}</p>
                 <p className="text-muted-foreground text-xs">
-                  {[edu.institution, edu.year].filter(Boolean).join(" · ")}
+                  {[
+                    edu.institution,
+                    [edu.start_year, edu.year].filter(Boolean).join(" – "),
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </p>
+                {edu.achievement && (
+                  <p className="text-muted-foreground text-xs italic">
+                    {edu.achievement}
+                  </p>
+                )}
               </div>
             ))}
           </div>

@@ -79,12 +79,40 @@ export function ProfileEducationTab({
                 placeholder="MIT"
               />
             </div>
-            <div className="space-y-1">
-              <label className="text-muted-foreground text-xs">Year</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="space-y-1">
+                <label className="text-muted-foreground text-xs">
+                  Start Year
+                </label>
+                <Input
+                  value={entry.start_year ?? ""}
+                  onChange={(e) =>
+                    updateEducation(i, "start_year", e.target.value)
+                  }
+                  placeholder="2015"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-muted-foreground text-xs">
+                  End Year
+                </label>
+                <Input
+                  value={entry.year}
+                  onChange={(e) => updateEducation(i, "year", e.target.value)}
+                  placeholder="2019"
+                />
+              </div>
+            </div>
+            <div className="col-span-2 space-y-1">
+              <label className="text-muted-foreground text-xs">
+                Achievement (optional)
+              </label>
               <Input
-                value={entry.year}
-                onChange={(e) => updateEducation(i, "year", e.target.value)}
-                placeholder="2019"
+                value={entry.achievement ?? ""}
+                onChange={(e) =>
+                  updateEducation(i, "achievement", e.target.value)
+                }
+                placeholder="Highest GPA 3.6, Dean's List, Magna Cum Laude..."
               />
             </div>
           </div>

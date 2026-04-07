@@ -15,7 +15,7 @@ import { ProfileSkillsTab } from "@/components/profile/profile-skills-tab";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { EMPTY_PROFILE, type UserProfile } from "@/lib/profile";
+import { EMPTY_PROFILE, migrateSkills, type UserProfile } from "@/lib/profile";
 
 export default function ProfilePage() {
   const { user, loading: userLoading } = useUser();
@@ -38,7 +38,11 @@ export default function ProfilePage() {
       .then((res) => res.json())
       .then((data) => {
         if (data && !data.error) {
-          setDraft({ ...EMPTY_PROFILE, ...data });
+          setDraft({
+            ...EMPTY_PROFILE,
+            ...data,
+            skills: migrateSkills(data.skills),
+          });
         }
       })
       .catch(console.error)
@@ -85,10 +89,10 @@ export default function ProfilePage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-8">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between gap-6">
         <div>
           <h1 className="text-xl font-semibold">Profile</h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="text-muted-foreground mt-1 text-sm">
             Your AI knowledge base — fill it in once, and every resume will be
             grounded in your real experience.
           </p>

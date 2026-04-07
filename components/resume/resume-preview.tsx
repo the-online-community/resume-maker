@@ -18,8 +18,6 @@ interface ResumePreviewProps {
   isLoading: boolean;
   isStreaming?: boolean;
   onDownloadPdf?: () => void;
-  onSaveResume?: () => void;
-  isSaving?: boolean;
   onPlaceholderChange?: (key: string, value: string) => void;
   onBatchPlaceholderChange?: (updates: Record<string, string>) => void;
   jobDescription?: string;
@@ -33,8 +31,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       isLoading,
       isStreaming,
       onDownloadPdf,
-      onSaveResume,
-      isSaving,
       onPlaceholderChange,
       onBatchPlaceholderChange,
       jobDescription,
@@ -235,15 +231,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
             <div className="flex gap-3">
               <Button size="lg" className="flex-1" onClick={onDownloadPdf}>
                 Download PDF
-              </Button>
-              <Button
-                size="lg"
-                className="flex-1"
-                variant="outline"
-                onClick={onSaveResume}
-                disabled={isSaving}
-              >
-                {isSaving ? "Saved!" : "Save Resume"}
               </Button>
             </div>
           </div>

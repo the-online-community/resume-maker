@@ -112,13 +112,21 @@ export function ProfileResumeImport({
     if (!merged.github && preview.github) merged.github = preview.github;
     if (!merged.website && preview.website) merged.website = preview.website;
 
-    // Append arrays
+    // Merge skills — preview returns flat array, put new ones in "General"
     if (preview.skills?.length) {
-      const existing = new Set(merged.skills.map((s) => s.toLowerCase()));
+      const existing = new Set<string>();
+      for (const group of Object.values(merged.skills)) {
+        for (const s of group) existing.add(s.toLowerCase());
+      }
       const newSkills = preview.skills.filter(
-        (s) => !existing.has(s.toLowerCase()),
+        (s) => s.trim() && !existing.has(s.trim().toLowerCase()),
       );
-      merged.skills = [...merged.skills, ...newSkills];
+      if (newSkills.length > 0) {
+        merged.skills = {
+          ...merged.skills,
+          General: [...(merged.skills.General ?? []), ...newSkills],
+        };
+      }
     }
     if (preview.experience?.length) {
       merged.experience = [...merged.experience, ...preview.experience];

@@ -196,7 +196,14 @@ export function AiSectionEditor({
   }, [prompt, isStreaming, selectedText, submitEdit]);
 
   const handleAccept = () => {
-    onAccept(streamedContent);
+    if (selectedText) {
+      // Surgical replace: swap only the selected portion within the full section
+      const newContent = currentContent.replace(selectedText, streamedContent);
+      onAccept(newContent);
+    } else {
+      // Full section replacement
+      onAccept(streamedContent);
+    }
     resetState();
   };
 
@@ -277,11 +284,18 @@ export function AiSectionEditor({
 
           {/* Streamed content preview */}
           {streamedContent && (
-            <div className="mb-2 max-h-40 overflow-y-auto rounded border bg-gray-50 p-2 text-xs whitespace-pre-line dark:bg-gray-900">
-              {streamedContent}
-              {isStreaming && (
-                <span className="bg-primary ml-0.5 inline-block h-3 w-0.5 animate-pulse" />
+            <div className="mb-2 space-y-1.5">
+              {selectedText && (
+                <div className="max-h-20 overflow-y-auto rounded border border-red-200 bg-red-50 p-2 text-xs whitespace-pre-line line-through opacity-60 dark:border-red-900 dark:bg-red-950">
+                  {selectedText}
+                </div>
               )}
+              <div className="max-h-40 overflow-y-auto rounded border border-green-200 bg-green-50 p-2 text-xs whitespace-pre-line dark:border-green-900 dark:bg-green-950">
+                {streamedContent}
+                {isStreaming && (
+                  <span className="bg-primary ml-0.5 inline-block h-3 w-0.5 animate-pulse" />
+                )}
+              </div>
             </div>
           )}
 

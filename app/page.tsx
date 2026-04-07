@@ -26,12 +26,7 @@ import { UserMenu } from "@/components/user-menu";
 import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
-import { EMPTY_PROFILE, isProfileEmpty, type UserProfile } from "@/lib/profile";
-import {
-  getAllSavedResumes,
-  saveGeneratedResume,
-  type SavedResumeEntry,
-} from "@/lib/resume/resume-store";
+import { EMPTY_PROFILE, isProfileEmpty, migrateSkills, type UserProfile } from "@/lib/profile";
 import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
 import {
   DEFAULT_SETTINGS,
@@ -62,22 +57,36 @@ export default function Page() {
   const editorResetRef = useRef<(() => void) | null>(null);
   const editorSetContentRef = useRef<((text: string) => void) | null>(null);
   const [isExtractingUrl, setIsExtractingUrl] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [trackDialogOpen, setTrackDialogOpen] = useState(false);
   const [existingCities, setExistingCities] = useState<string[]>([]);
   const [existingPlatforms, setExistingPlatforms] = useState<string[]>([]);
   const [customPrompt, setCustomPrompt] = useState("");
-  const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(null);
+  const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(() => {
+    try {
+      const cached = sessionStorage.getItem("job_analysis_cache");
+      if (cached) {
+        const { analysis } = JSON.parse(cached);
+        return analysis ?? null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
   const [isAnalyzingJob, setIsAnalyzingJob] = useState(false);
   const [jobDescCollapsed, setJobDescCollapsed] = useState(false);
-  const analysisJobRef = useRef("");
+  const analysisJobRef = useRef(
+    (() => {
+      try {
+        const cached = sessionStorage.getItem("job_analysis_cache");
+        if (cached) {
+          const { jobText } = JSON.parse(cached);
+          return jobText ?? "";
+        }
+      } catch { /* ignore */ }
+      return "";
+    })(),
+  );
   const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [resumeTitle, setResumeTitle] = useState("Resume");
-
-  // Saved generated resumes (lifted from dropzone for AI context)
-  const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
-    SavedResumeEntry[]
-  >([]);
 
   const MAX_ATTEMPTS = 5;
   const [usageCount, setUsageCount] = useState(0);
@@ -97,11 +106,6 @@ export default function Page() {
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile>(EMPTY_PROFILE);
-
-  // Load saved generated resumes on mount
-  useEffect(() => {
-    getAllSavedResumes().then(setSavedGeneratedResumes);
-  }, []);
 
   // Load existing cities and platforms for track dialog autocomplete
   useEffect(() => {
@@ -146,6 +150,16 @@ export default function Page() {
     }
   }, [placeholders, resumeTitle]);
 
+  // Cache job analysis to sessionStorage so it survives navigation
+  useEffect(() => {
+    if (jobAnalysis && analysisJobRef.current) {
+      sessionStorage.setItem(
+        "job_analysis_cache",
+        JSON.stringify({ analysis: jobAnalysis, jobText: analysisJobRef.current }),
+      );
+    }
+  }, [jobAnalysis]);
+
   // Load template settings when user changes
   useEffect(() => {
     fetch("/api/template-settings")
@@ -161,9 +175,12 @@ export default function Page() {
       .then((res) => res.json())
       .then((data: UserProfile | null) => {
         if (data) {
-          setUserProfile(data);
+          setUserProfile({
+            ...data,
+            skills: migrateSkills(data.skills),
+          });
         }
-        if (!data || isProfileEmpty(data)) {
+        if (!data || isProfileEmpty({ ...EMPTY_PROFILE, ...data, skills: migrateSkills(data?.skills) })) {
           router.push("/profile");
         }
       })
@@ -305,35 +322,16 @@ export default function Page() {
       setPlaceholders(null);
 
       try {
-        // Build resume context from saved generated resumes
         const resumeTexts: string[] = [];
 
-        // Add saved (generated) resume texts as additional context
-        for (const savedResume of savedGeneratedResumes) {
-          const p = savedResume.placeholders;
-          const parts: string[] = [];
-          if (p.FULL_NAME) parts.push(`Name: ${p.FULL_NAME}`);
-          if (p.JOB_TITLE) parts.push(`Title: ${p.JOB_TITLE}`);
-          if (p.EMAIL) parts.push(`Email: ${p.EMAIL}`);
-          if (p.PHONE) parts.push(`Phone: ${p.PHONE}`);
-          if (p.LOCATION) parts.push(`Location: ${p.LOCATION}`);
-          if (p.SUMMARY) parts.push(`Summary:\n${p.SUMMARY}`);
-          if (p.EXPERIENCE) parts.push(`Experience:\n${p.EXPERIENCE}`);
-          if (p.EDUCATION) parts.push(`Education:\n${p.EDUCATION}`);
-          if (p.SKILLS) parts.push(`Skills: ${p.SKILLS}`);
-          if (p.CERTIFICATIONS)
-            parts.push(`Certifications: ${p.CERTIFICATIONS}`);
-          resumeTexts.push(parts.join("\n\n"));
-        }
-
-        // 4. Tailor with AI (streamed) — if no resumes, pass user info for generation
+        // Tailor with AI (streamed)
         const tailorRes = await fetch("/api/tailor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             jobDescription,
             resumeTexts,
-            placeholders: DEFAULT_TEMPLATE.placeholders,
+            placeholders: [...DEFAULT_TEMPLATE.placeholders, "_COMPANY_NAME"],
             targetPages,
             userName:
               user?.user_metadata?.full_name || user?.user_metadata?.name,
@@ -366,6 +364,7 @@ export default function Page() {
           // Try parsing the accumulated JSON so far
           try {
             const parsed = JSON.parse(accumulated) as Record<string, string>;
+            delete parsed._COMPANY_NAME;
             setPlaceholders(parsed);
           } catch {
             // JSON is still incomplete — try to extract partial key-value pairs
@@ -379,6 +378,7 @@ export default function Page() {
               }
               // Try closing the object
               const parsed = JSON.parse(fixup + "}") as Record<string, string>;
+              delete parsed._COMPANY_NAME;
               setPlaceholders(parsed);
             } catch {
               // Still not parseable — wait for more data
@@ -395,18 +395,15 @@ export default function Page() {
         setIsStreaming(false);
         incrementUsage();
 
-        // Extract company name from JD for the resume title
-        const jd = jobDescriptionRef.current;
-        const companyMatch = jd.match(
-          /(?:(?:at|@|for|join|about)\s+)([A-Z][A-Za-z0-9&'.\- ]{1,40})/,
-        );
-        if (companyMatch?.[1]) {
-          setResumeTitle(`Resume — ${companyMatch[1].trim()}`);
-        } else if (finalPlaceholders.JOB_TITLE) {
-          setResumeTitle(`Resume — ${finalPlaceholders.JOB_TITLE}`);
+        // Set resume title using AI-extracted company name
+        const companyName = finalPlaceholders._COMPANY_NAME;
+        if (companyName && companyName !== "[Company Name]") {
+          setResumeTitle(`Resume — ${companyName}`);
         } else {
-          setResumeTitle("Resume");
+          setResumeTitle("Resume — [Company Name]");
         }
+        // Remove the hidden field so it doesn't appear in the resume
+        delete finalPlaceholders._COMPANY_NAME;
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
         setIsStreaming(false);
@@ -418,7 +415,6 @@ export default function Page() {
       targetPages,
       incrementUsage,
       user,
-      savedGeneratedResumes,
       customPrompt,
       templateSettings,
       selectedModel,
@@ -459,23 +455,6 @@ export default function Page() {
       printWindow.close();
     };
   }, [resumeTitle]);
-
-  const handleSaveResume = useCallback(async () => {
-    if (!placeholders) return;
-
-    setIsSaving(true);
-    try {
-      const name = resumeTitle || "Resume";
-
-      const entry = await saveGeneratedResume(name, placeholders);
-      setSavedGeneratedResumes((prev) => [...prev, entry]);
-    } catch {
-      setError("Failed to save resume");
-    } finally {
-      // Show "Saved!" briefly, then reset
-      setTimeout(() => setIsSaving(false), 1500);
-    }
-  }, [placeholders, resumeTitle]);
 
   return (
     <>
@@ -614,6 +593,7 @@ export default function Page() {
                           setIsAnalyzingJob(false);
                           analysisJobRef.current = "";
                           setJobDescCollapsed(false);
+                          try { sessionStorage.removeItem("job_analysis_cache"); } catch { /* ignore */ }
                         }
                       }}
                       onResetRef={editorResetRef}
@@ -823,8 +803,6 @@ export default function Page() {
                 isLoading={isLoading}
                 isStreaming={isStreaming}
                 onDownloadPdf={handleDownloadPdf}
-                onSaveResume={handleSaveResume}
-                isSaving={isSaving}
                 jobDescription={jobDescriptionRef.current}
                 templateSettings={templateSettings}
                 onPlaceholderChange={(key, value) =>

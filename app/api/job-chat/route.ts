@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
 import { MODELS } from "@/lib/models";
-import type { UserProfile } from "@/lib/profile";
+import { flattenSkills, type UserProfile } from "@/lib/profile";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -21,8 +21,9 @@ function buildProfileBlock(profile: UserProfile): string {
 
   if (profile.full_name) lines.push(`Name: ${profile.full_name}`);
   if (profile.location) lines.push(`Location: ${profile.location}`);
-  if (profile.skills?.length)
-    lines.push(`Skills: ${profile.skills.join(", ")}`);
+  const allSkills = flattenSkills(profile.skills ?? {});
+  if (allSkills.length)
+    lines.push(`Skills: ${allSkills.join(", ")}`);
 
   if (profile.experience?.length) {
     lines.push("\nWork Experience:");

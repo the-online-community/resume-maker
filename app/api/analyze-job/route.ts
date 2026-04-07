@@ -2,7 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
 import { MODELS } from "@/lib/models";
-import type { UserProfile } from "@/lib/profile";
+import { flattenSkills, type UserProfile } from "@/lib/profile";
 
 interface AnalyzeJobRequest {
   jobDescription: string;
@@ -22,8 +22,9 @@ interface AnalyzeJobResponse {
 function buildProfileContext(profile?: UserProfile): string {
   if (!profile) return "";
   const parts: string[] = [];
-  if (profile.skills?.length) {
-    parts.push(`CANDIDATE SKILLS: ${profile.skills.join(", ")}`);
+  const allSkills = flattenSkills(profile.skills ?? {});
+  if (allSkills.length) {
+    parts.push(`CANDIDATE SKILLS: ${allSkills.join(", ")}`);
   }
   if (profile.experience?.length) {
     const roles = profile.experience.map(

@@ -515,7 +515,7 @@ export default function Page() {
                     hasJobDescription ? "cursor-pointer" : "cursor-default",
                   )}
                 >
-                  <h2 className="font-mono">Job Description</h2>
+                  <h2 className="font-mono">Job Description / LinkedIn URL</h2>
                   <div className="flex items-center gap-2">
                     {hasJobDescription && (
                       <span

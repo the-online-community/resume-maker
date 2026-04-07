@@ -183,7 +183,7 @@ export default function TextEditor({
           )}
         >
           <EditorContainer>
-            <Editor placeholder="Paste your job description here..." />
+            <Editor placeholder="Paste a job description or LinkedIn URL..." />
           </EditorContainer>
         </div>
 

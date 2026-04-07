@@ -43,12 +43,13 @@ export function Footer() {
           <div className="text-muted-foreground space-y-4 text-sm">
             <div className="space-y-1">
               <p className="text-foreground font-medium">
-                1. Upload your resume &amp; fill your profile
+                1. Fill your profile
               </p>
               <p>
-                Drop one or more PDF resumes and complete your profile details
-                — skills, experience, education, and languages. This gives the
-                AI full context to work with.
+                Complete your profile with skills, experience, education,
+                projects, and languages. Link projects to jobs so the AI
+                knows which achievements belong where. You can also import
+                from an existing resume PDF.
               </p>
             </div>
             <div className="space-y-1">
@@ -75,9 +76,10 @@ export function Footer() {
                 4. Tailor, edit &amp; track
               </p>
               <p>
-                If the job is a good fit, tailor your resume with one click.
-                Edit the result directly in the preview, download as PDF, and
-                track every application you submit.
+                Tailor your resume with one click — the AI uses your real
+                experience, linked projects, and skills to generate targeted
+                bullet points. Edit inline with AI, download as PDF, and track
+                every application.
               </p>
             </div>
           </div>

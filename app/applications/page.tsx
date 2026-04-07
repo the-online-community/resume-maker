@@ -18,6 +18,11 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -493,8 +498,10 @@ function AnalyticsBar({ applications }: { applications: Application[] }) {
     let week = 0;
     let month = 0;
 
-    // Count top cities
+    // Count top cities + build day map for streak
     const cityMap = new Map<string, number>();
+    const dayMap = new Map<string, number>();
+    const dayCitiesMap = new Map<string, Map<string, number>>();
 
     for (const app of applications) {
       const date = app.applied_at;
@@ -507,13 +514,54 @@ function AnalyticsBar({ applications }: { applications: Application[] }) {
       if (city) {
         cityMap.set(city, (cityMap.get(city) || 0) + 1);
       }
+
+      if (date) {
+        dayMap.set(date, (dayMap.get(date) || 0) + 1);
+        if (city) {
+          if (!dayCitiesMap.has(date)) dayCitiesMap.set(date, new Map());
+          const dc = dayCitiesMap.get(date)!;
+          dc.set(city, (dc.get(city) || 0) + 1);
+        }
+      }
     }
 
     const topCities = [...cityMap.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
 
-    return { today, yesterday: yesterdayCount, week, month, all: applications.length, topCities };
+    // ── Streak computation ──
+    // Current streak: consecutive days ending today (or yesterday if nothing today yet)
+    let currentStreak = 0;
+    const checkDate = new Date(now);
+    // If no applications today, start checking from yesterday
+    if (!dayMap.has(todayStr)) {
+      checkDate.setDate(checkDate.getDate() - 1);
+    }
+    while (true) {
+      const key = checkDate.toISOString().slice(0, 10);
+      if (dayMap.has(key)) {
+        currentStreak++;
+        checkDate.setDate(checkDate.getDate() - 1);
+      } else {
+        break;
+      }
+    }
+
+    // Build last 90 days grid for contribution boxes
+    const streakDays: { date: string; count: number; cities: [string, number][] }[] = [];
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const key = d.toISOString().slice(0, 10);
+      const dc = dayCitiesMap.get(key);
+      const cities = dc ? [...dc.entries()].sort((a, b) => b[1] - a[1]) : [];
+      streakDays.push({ date: key, count: dayMap.get(key) || 0, cities });
+    }
+
+    // Max count for scaling opacity
+    const maxCount = Math.max(1, ...streakDays.map((d) => d.count));
+
+    return { today, yesterday: yesterdayCount, week, month, all: applications.length, topCities, currentStreak, streakDays, maxCount };
   }, [applications]);
 
   return (
@@ -544,6 +592,47 @@ function AnalyticsBar({ applications }: { applications: Application[] }) {
           </div>
         </div>
       )}
+      <div className="border-l pl-4">
+        <div className="mb-1 flex items-center gap-2">
+          <p className="text-muted-foreground text-[10px]">Streak</p>
+          {stats.currentStreak > 0 && (
+            <span className="text-[10px] font-bold tabular-nums text-green-600 dark:text-green-400">
+              {stats.currentStreak}d 🔥
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-[3px]">
+          {stats.streakDays.map((day) => {
+            const intensity = day.count === 0 ? 0 : Math.max(0.2, day.count / stats.maxCount);
+            return (
+              <Tooltip key={day.date} delayDuration={150}>
+                <TooltipTrigger asChild>
+                  <div
+                    className="size-[10px] rounded-[2px]"
+                    style={{
+                      backgroundColor:
+                        day.count === 0
+                          ? "var(--muted)"
+                          : `oklch(0.65 0.19 145 / ${intensity})`,
+                    }}
+                  />
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-48 text-xs">
+                  <p className="font-semibold">{day.date}</p>
+                  <p className="text-muted-foreground">
+                    {day.count} application{day.count !== 1 ? "s" : ""}
+                  </p>
+                  {day.cities.length > 0 && (
+                    <p className="text-muted-foreground mt-0.5">
+                      {day.cities.map(([city, n]) => `${city} (${n})`).join(", ")}
+                    </p>
+                  )}
+                </TooltipContent>
+              </Tooltip>
+            );
+          })}
+        </div>
+      </div>
     </div>
   );
 }

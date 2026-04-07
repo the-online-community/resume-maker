@@ -30,69 +30,63 @@ interface TemplateSettingsDialogProps {
   onSave: (settings: TemplateSettings) => void;
   isSaving?: boolean;
   disabled?: boolean;
+  hasProfile?: boolean;
 }
 
 export function TemplateSettingsDialog({
   settings,
   onSave,
-  isSaving,
   disabled,
 }: TemplateSettingsDialogProps) {
   const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState<TemplateSettings>(settings);
 
-  const handleOpenChange = useCallback(
-    (nextOpen: boolean) => {
-      if (nextOpen) setDraft(settings);
-      setOpen(nextOpen);
+  // Apply changes immediately — every toggle/reorder calls onSave
+  const update = useCallback(
+    (next: TemplateSettings) => {
+      onSave(next);
     },
-    [settings],
+    [onSave],
   );
 
-  const handleSave = useCallback(() => {
-    onSave(draft);
-    setOpen(false);
-  }, [draft, onSave]);
-
   const handleReset = useCallback(() => {
-    setDraft(DEFAULT_SETTINGS);
-  }, []);
+    update(DEFAULT_SETTINGS);
+  }, [update]);
 
   // ── Section helpers ──
 
   const moveSection = (index: number, direction: -1 | 1) => {
-    const newSections = [...draft.sections];
+    const newSections = [...settings.sections];
     const target = index + direction;
     if (target < 0 || target >= newSections.length) return;
     [newSections[index], newSections[target]] = [
       newSections[target],
       newSections[index],
     ];
-    setDraft({ ...draft, sections: newSections });
+    update({ ...settings, sections: newSections });
   };
 
   const toggleSection = (key: string) => {
-    const has = draft.sections.includes(key);
-    setDraft({
-      ...draft,
+    const has = settings.sections.includes(key);
+    update({
+      ...settings,
       sections: has
-        ? draft.sections.filter((s) => s !== key)
-        : [...draft.sections, key],
+        ? settings.sections.filter((s) => s !== key)
+        : [...settings.sections, key],
     });
   };
 
   const toggleHeaderField = (key: string) => {
-    const has = draft.headerFields.includes(key);
-    setDraft({
-      ...draft,
+    const has = settings.headerFields.includes(key);
+    update({
+      ...settings,
       headerFields: has
-        ? draft.headerFields.filter((f) => f !== key)
-        : [...draft.headerFields, key],
+        ? settings.headerFields.filter((f) => f !== key)
+        : [...settings.headerFields, key],
     });
   };
 
   // Build ordered list: enabled sections first (in order), then disabled ones
-  const enabledSections = draft.sections;
+  const enabledSections = settings.sections;
   const disabledSections = ALL_SECTIONS.filter(
     (s) => !enabledSections.includes(s.key),
   );
@@ -104,7 +98,7 @@ export function TemplateSettingsDialog({
   ];
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
           size="lg"
@@ -207,7 +201,7 @@ export function TemplateSettingsDialog({
                 >
                   <input
                     type="checkbox"
-                    checked={draft.headerFields.includes(field.key)}
+                    checked={settings.headerFields.includes(field.key)}
                     onChange={() => toggleHeaderField(field.key)}
                     className="accent-primary size-3.5 cursor-pointer"
                   />
@@ -223,9 +217,9 @@ export function TemplateSettingsDialog({
             <label className="flex cursor-pointer items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={draft.boldLabels}
+                checked={settings.boldLabels}
                 onChange={() =>
-                  setDraft({ ...draft, boldLabels: !draft.boldLabels })
+                  update({ ...settings, boldLabels: !settings.boldLabels })
                 }
                 className="accent-primary size-3.5 cursor-pointer"
               />
@@ -246,8 +240,8 @@ export function TemplateSettingsDialog({
                     type="radio"
                     name="bulletStyle"
                     value={style}
-                    checked={draft.bulletStyle === style}
-                    onChange={() => setDraft({ ...draft, bulletStyle: style })}
+                    checked={settings.bulletStyle === style}
+                    onChange={() => update({ ...settings, bulletStyle: style })}
                     className="accent-primary size-3.5 cursor-pointer"
                   />
                   {style === "dot" ? "• Dot" : "— Dash"}
@@ -265,9 +259,6 @@ export function TemplateSettingsDialog({
           >
             Reset to defaults
           </button>
-          <Button onClick={handleSave} disabled={isSaving}>
-            {isSaving ? "Saving..." : "Save"}
-          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

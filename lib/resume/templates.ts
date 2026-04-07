@@ -90,6 +90,7 @@ export const ALL_SECTIONS: { key: string; label: string }[] = [
   { key: "EDUCATION", label: "Education" },
   { key: "SKILLS", label: "Skills" },
   { key: "CERTIFICATIONS", label: "Certifications" },
+  { key: "LANGUAGES", label: "Languages" },
 ];
 
 /** All header contact fields that can appear, with display labels. */

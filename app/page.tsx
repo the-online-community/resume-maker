@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { JobDrawer } from "@/components/job-drawer/job-drawer";
+import { TrackApplicationDialog } from "@/components/track-application-dialog";
 import { ProposalPreview } from "@/components/proposal/proposal-preview";
 import { QAView, type QAItem } from "@/components/qa/qa-view";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
@@ -64,6 +66,9 @@ export default function Page() {
   const editorResetRef = useRef<(() => void) | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTracking, setIsTracking] = useState(false);
+  const [trackDialogOpen, setTrackDialogOpen] = useState(false);
+  const [existingCities, setExistingCities] = useState<string[]>([]);
+  const [existingPlatforms, setExistingPlatforms] = useState<string[]>([]);
   const [customPrompt, setCustomPrompt] = useState("");
   const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
   const [resumeTitle, setResumeTitle] = useState("Resume");
@@ -93,6 +98,7 @@ export default function Page() {
   const [templateSettings, setTemplateSettings] =
     useState<TemplateSettings>(DEFAULT_SETTINGS);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
+  const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile>(EMPTY_PROFILE);
@@ -102,6 +108,24 @@ export default function Page() {
   useEffect(() => {
     getAllSavedResumes().then(setSavedGeneratedResumes);
   }, []);
+
+  // Load existing cities and platforms for track dialog autocomplete
+  useEffect(() => {
+    if (!user) return;
+    fetch("/api/applications")
+      .then((res) => res.json())
+      .then((apps: { notes?: string; platform?: string }[]) => {
+        const cities = new Set<string>();
+        const platforms = new Set<string>();
+        for (const app of apps) {
+          if (app.notes?.trim()) cities.add(app.notes.trim());
+          if (app.platform?.trim()) platforms.add(app.platform.trim());
+        }
+        setExistingCities([...cities].sort());
+        setExistingPlatforms([...platforms].sort());
+      })
+      .catch(() => {});
+  }, [user]);
 
   // Restore cached resume state from sessionStorage
   useEffect(() => {
@@ -665,20 +689,22 @@ export default function Page() {
                 <>
                   <TemplateSettingsDialog
                     settings={templateSettings}
-                    onSave={async (newSettings) => {
-                      setIsSavingSettings(true);
-                      try {
-                        const res = await fetch("/api/template-settings", {
-                          method: "PUT",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify(newSettings),
-                        });
-                        if (res.ok) setTemplateSettings(newSettings);
-                      } catch {
-                        // silently fail
-                      } finally {
-                        setIsSavingSettings(false);
-                      }
+                    onSave={(newSettings) => {
+                      // Apply immediately to UI
+                      setTemplateSettings(newSettings);
+                      // Debounce the DB save
+                      if (settingsSaveTimer.current) clearTimeout(settingsSaveTimer.current);
+                      settingsSaveTimer.current = setTimeout(async () => {
+                        try {
+                          await fetch("/api/template-settings", {
+                            method: "PUT",
+                            headers: { "Content-Type": "application/json" },
+                            body: JSON.stringify(newSettings),
+                          });
+                        } catch {
+                          // silently fail
+                        }
+                      }, 500);
                     }}
                     isSaving={isSavingSettings}
                     disabled={!user}
@@ -795,37 +821,46 @@ export default function Page() {
                     placeholder="Resume title..."
                   />
                   {user && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="shrink-0 text-xs"
-                      disabled={isTracking}
-                      onClick={async () => {
-                        setIsTracking(true);
-                        const parts = resumeTitle
-                          .split("\u2014")
-                          .map((s) => s.trim());
-                        const position =
-                          placeholders.JOB_TITLE || parts[0] || "";
-                        const company = parts[1] || "";
-                        try {
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 text-xs"
+                        onClick={() => setTrackDialogOpen(true)}
+                      >
+                        Track Application
+                      </Button>
+                      <TrackApplicationDialog
+                        open={trackDialogOpen}
+                        onOpenChange={setTrackDialogOpen}
+                        position={placeholders.JOB_TITLE || resumeTitle.split("\u2014")[0]?.trim() || ""}
+                        company={resumeTitle.split("\u2014")[1]?.trim() || ""}
+                        resumeData={placeholders}
+                        cities={existingCities}
+                        platforms={existingPlatforms}
+                        onTrack={async (data) => {
                           await fetch("/api/applications", {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                              position,
-                              company,
-                              resume_data: placeholders,
-                            }),
+                            body: JSON.stringify(data),
                           });
-                          router.push("/applications");
-                        } catch {
-                          setIsTracking(false);
-                        }
-                      }}
-                    >
-                      {isTracking ? "Tracking..." : "Track Application"}
-                    </Button>
+                          // Update autocomplete lists with new values
+                          if (data.notes && !existingCities.includes(data.notes)) {
+                            setExistingCities((prev) => [...prev, data.notes].sort());
+                          }
+                          if (data.platform && !existingPlatforms.includes(data.platform)) {
+                            setExistingPlatforms((prev) => [...prev, data.platform].sort());
+                          }
+                          toast.success("Application tracked", {
+                            description: `${data.position}${data.company ? ` at ${data.company}` : ""}`,
+                            action: {
+                              label: "View All",
+                              onClick: () => router.push("/applications"),
+                            },
+                          });
+                        }}
+                      />
+                    </>
                   )}
                 </div>
               )}

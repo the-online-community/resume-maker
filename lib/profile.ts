@@ -17,7 +17,22 @@ export interface ProjectEntry {
   stack: string; // comma-separated, e.g. "React, Node.js, PostgreSQL"
   description: string;
   url?: string;
+  role?: string;
+  highlights?: string[]; // key achievements / accomplishments within this project
 }
+
+export interface LanguageEntry {
+  language: string;
+  proficiency: string; // e.g. "Native", "Fluent", "Advanced", "Intermediate", "Basic"
+}
+
+export const LANGUAGE_PROFICIENCIES = [
+  "Native",
+  "Fluent",
+  "Advanced",
+  "Intermediate",
+  "Basic",
+] as const;
 
 export interface UserProfile {
   full_name: string;
@@ -31,6 +46,7 @@ export interface UserProfile {
   experience: ExperienceEntry[];
   education: EducationEntry[];
   projects: ProjectEntry[];
+  languages: LanguageEntry[];
 }
 
 export const EMPTY_PROFILE: UserProfile = {
@@ -45,6 +61,7 @@ export const EMPTY_PROFILE: UserProfile = {
   experience: [],
   education: [],
   projects: [],
+  languages: [],
 };
 
 export function isProfileEmpty(profile: UserProfile): boolean {
@@ -59,6 +76,7 @@ export function isProfileEmpty(profile: UserProfile): boolean {
     profile.skills.length === 0 &&
     profile.experience.length === 0 &&
     profile.education.length === 0 &&
-    profile.projects.length === 0
+    profile.projects.length === 0 &&
+    (profile.languages ?? []).length === 0
   );
 }

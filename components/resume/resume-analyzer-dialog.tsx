@@ -33,6 +33,7 @@ interface ResumeAnalyzerDialogProps {
   jobDescription: string;
   onAcceptSuggestion: (section: string, newText: string) => void;
   disabled?: boolean;
+  label?: string;
 }
 
 /** Sparkle SVG icon */
@@ -183,6 +184,7 @@ export function ResumeAnalyzerDialog({
   jobDescription,
   onAcceptSuggestion,
   disabled,
+  label = "Analyze",
 }: ResumeAnalyzerDialogProps) {
   const [open, setOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -277,23 +279,25 @@ export function ResumeAnalyzerDialog({
   const totalCount = result?.suggestions.length ?? 0;
 
   const buttonLabel = isLoading
-    ? `Analyzing ${progress}%`
+    ? `${progress}%`
     : result
-      ? `Score: ${result.score} — View`
-      : "Analyze";
+      ? `${label}: ${result.score}`
+      : label;
 
   return (
     <>
       <Button
-        size="lg"
-        variant={result ? "default" : "outline"}
-        className="shrink-0"
+        size="sm"
+        variant="outline"
+        className="shrink-0 text-xs"
         disabled={disabled || !placeholders || !jobDescription}
         onClick={handleButtonClick}
       >
-        <SparkleIcon
-          className={`mr-1.5 h-4 w-4 ${isLoading ? "animate-spin" : ""}`}
-        />
+        {isLoading ? (
+          <div className="border-primary mr-1.5 size-3 animate-spin rounded-full border-2 border-t-transparent" />
+        ) : (
+          <SparkleIcon className="mr-1.5 size-3" />
+        )}
         {buttonLabel}
       </Button>
 

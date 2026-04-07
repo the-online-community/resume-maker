@@ -133,6 +133,14 @@ export function UserMenu({
           className="w-full justify-start"
           asChild
         >
+          <Link href="/profile">Profile</Link>
+        </Button>
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start"
+          asChild
+        >
           <Link href="/applications">My Applications</Link>
         </Button>
         <Button

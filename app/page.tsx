@@ -1,21 +1,17 @@
 "use client";
 
+import { toast } from "sonner";
 import { useCallback, useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
-import { toast } from "sonner";
 
-import { JobDrawer } from "@/components/job-drawer/job-drawer";
-import { TrackApplicationDialog } from "@/components/track-application-dialog";
-import { ProposalPreview } from "@/components/proposal/proposal-preview";
-import { QAView, type QAItem } from "@/components/qa/qa-view";
+import { JobAnalysisPanel, type JobAnalysis } from "@/components/job-analysis";
 import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
-import ResumeDropzone from "@/components/resume/resume-dropzone";
 import ResumePreview from "@/components/resume/resume-preview";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
-import { UserProfileDialog } from "@/components/resume/user-profile-dialog";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { TrackApplicationDialog } from "@/components/track-application-dialog";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -32,7 +28,6 @@ import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
 import { EMPTY_PROFILE, isProfileEmpty, type UserProfile } from "@/lib/profile";
 import {
-  getAllResumes,
   getAllSavedResumes,
   saveGeneratedResume,
   type SavedResumeEntry,
@@ -43,6 +38,7 @@ import {
   DEFAULT_TEMPLATE,
   type TemplateSettings,
 } from "@/lib/resume/templates";
+import { cn } from "@/lib/utils";
 
 const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
@@ -64,20 +60,19 @@ export default function Page() {
   const [targetPages, setTargetPages] = useState(1);
   const [hasJobDescription, setHasJobDescription] = useState(false);
   const editorResetRef = useRef<(() => void) | null>(null);
+  const editorSetContentRef = useRef<((text: string) => void) | null>(null);
+  const [isExtractingUrl, setIsExtractingUrl] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [isTracking, setIsTracking] = useState(false);
   const [trackDialogOpen, setTrackDialogOpen] = useState(false);
   const [existingCities, setExistingCities] = useState<string[]>([]);
   const [existingPlatforms, setExistingPlatforms] = useState<string[]>([]);
   const [customPrompt, setCustomPrompt] = useState("");
-  const [jobDrawerOpen, setJobDrawerOpen] = useState(false);
+  const [jobAnalysis, setJobAnalysis] = useState<JobAnalysis | null>(null);
+  const [isAnalyzingJob, setIsAnalyzingJob] = useState(false);
+  const [jobDescCollapsed, setJobDescCollapsed] = useState(false);
+  const analysisJobRef = useRef("");
+  const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [resumeTitle, setResumeTitle] = useState("Resume");
-  const [activeTab, setActiveTab] = useState<"resume" | "proposal" | "qa">("resume");
-  const [proposalText, setProposalText] = useState("");
-  const [isProposalLoading, setIsProposalLoading] = useState(false);
-  const [isProposalStreaming, setIsProposalStreaming] = useState(false);
-  const [qaItems, setQAItems] = useState<QAItem[]>([]);
-  const [isQALoading, setIsQALoading] = useState(false);
 
   // Saved generated resumes (lifted from dropzone for AI context)
   const [savedGeneratedResumes, setSavedGeneratedResumes] = useState<
@@ -102,7 +97,6 @@ export default function Page() {
 
   // User profile
   const [userProfile, setUserProfile] = useState<UserProfile>(EMPTY_PROFILE);
-  const [isSavingProfile, setIsSavingProfile] = useState(false);
 
   // Load saved generated resumes on mount
   useEffect(() => {
@@ -160,16 +154,21 @@ export default function Page() {
       .catch(() => {});
   }, [user]);
 
-  // Load user profile when user changes
+  // Load user profile when user changes — redirect to /profile if empty
   useEffect(() => {
     if (!user) return;
     fetch("/api/profile")
       .then((res) => res.json())
       .then((data: UserProfile | null) => {
-        if (data) setUserProfile(data);
+        if (data) {
+          setUserProfile(data);
+        }
+        if (!data || isProfileEmpty(data)) {
+          router.push("/profile");
+        }
       })
       .catch(() => {});
-  }, [user]);
+  }, [user, router]);
 
   // Fetch usage count from DB when user changes
   useEffect(() => {
@@ -217,296 +216,216 @@ export default function Page() {
     }
   }, []);
 
-  const handleTailor = useCallback(async (promptOverride?: string) => {
-    const jobDescription = jobDescriptionRef.current;
-
-    if (!jobDescription.trim()) {
-      setError("Please paste a job description first");
-      return;
-    }
-
-    setError(null);
-    setIsLoading(true);
-    setIsStreaming(false);
-    setPlaceholders(null);
-
-    try {
-      // 1. Get uploaded resumes from IndexedDB
-      const savedResumes = await getAllResumes();
-      let resumeTexts: string[] = [];
-
-      // 2. If uploaded resumes exist, parse them on the server
-      if (savedResumes.length > 0) {
-        const formData = new FormData();
-        for (const resume of savedResumes) {
-          formData.append("files", resume.file, resume.fileName);
-        }
-
-        const parseRes = await fetch("/api/parse-pdf", {
+  // ── Auto-analyze job description ──
+  const analyzeJob = useCallback(
+    async (jobText: string) => {
+      // Skip if same job already analyzed or empty
+      if (!jobText.trim() || jobText.trim() === analysisJobRef.current) return;
+      analysisJobRef.current = jobText.trim();
+      setIsAnalyzingJob(true);
+      setJobAnalysis(null);
+      try {
+        const res = await fetch("/api/analyze-job", {
           method: "POST",
-          body: formData,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            jobDescription: jobText,
+            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
+            model: selectedModel,
+          }),
         });
-
-        if (!parseRes.ok) {
-          throw new Error("Failed to parse PDF files");
+        if (res.ok) {
+          const data = await res.json();
+          setJobAnalysis(data);
         }
-
-        const { results: parsedResumes } = (await parseRes.json()) as {
-          results: { fileName: string; text: string }[];
-        };
-
-        resumeTexts = parsedResumes.map((r) => r.text);
+      } catch {
+        // silently fail — analysis is non-critical
+      } finally {
+        setIsAnalyzingJob(false);
       }
+    },
+    [userProfile, selectedModel],
+  );
 
-      // 3. Add saved (generated) resume texts as additional context
-      for (const savedResume of savedGeneratedResumes) {
-        const p = savedResume.placeholders;
-        const parts: string[] = [];
-        if (p.FULL_NAME) parts.push(`Name: ${p.FULL_NAME}`);
-        if (p.JOB_TITLE) parts.push(`Title: ${p.JOB_TITLE}`);
-        if (p.EMAIL) parts.push(`Email: ${p.EMAIL}`);
-        if (p.PHONE) parts.push(`Phone: ${p.PHONE}`);
-        if (p.LOCATION) parts.push(`Location: ${p.LOCATION}`);
-        if (p.SUMMARY) parts.push(`Summary:\n${p.SUMMARY}`);
-        if (p.EXPERIENCE) parts.push(`Experience:\n${p.EXPERIENCE}`);
-        if (p.EDUCATION) parts.push(`Education:\n${p.EDUCATION}`);
-        if (p.SKILLS) parts.push(`Skills: ${p.SKILLS}`);
-        if (p.CERTIFICATIONS) parts.push(`Certifications: ${p.CERTIFICATIONS}`);
-        resumeTexts.push(parts.join("\n\n"));
+  // ── LinkedIn URL auto-extract ──
+  const handleUrlDetected = useCallback(
+    async (url: string) => {
+      // Cancel any pending debounced analysis — we'll trigger it after extraction
+      if (analyzeTimerRef.current) {
+        clearTimeout(analyzeTimerRef.current);
+        analyzeTimerRef.current = null;
       }
-
-      // 4. Tailor with AI (streamed) — if no resumes, pass user info for generation
-      const tailorRes = await fetch("/api/tailor", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          jobDescription,
-          resumeTexts,
-          placeholders: DEFAULT_TEMPLATE.placeholders,
-          targetPages,
-          userName: user?.user_metadata?.full_name || user?.user_metadata?.name,
-          userEmail: user?.email,
-          customPrompt: (promptOverride ?? customPrompt) || undefined,
-          templateSettings,
-          model: selectedModel,
-          userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
-        }),
-      });
-
-      if (!tailorRes.ok) {
-        throw new Error("Failed to tailor resume");
-      }
-
-      setIsStreaming(true);
-      setIsLoading(false);
-      setPlaceholders({});
-
-      const reader = tailorRes.body!.getReader();
-      const decoder = new TextDecoder();
-      let accumulated = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        accumulated += decoder.decode(value, { stream: true });
-
-        // Try parsing the accumulated JSON so far
-        try {
-          const parsed = JSON.parse(accumulated) as Record<string, string>;
-          setPlaceholders(parsed);
-        } catch {
-          // JSON is still incomplete — try to extract partial key-value pairs
-          // by closing the incomplete JSON with a }
-          try {
-            // Remove any trailing incomplete string value (unclosed quote)
-            let fixup = accumulated.trimEnd();
-            // If ends with an unfinished string value, close it
-            if (fixup.endsWith(",")) {
-              fixup = fixup.slice(0, -1);
-            }
-            // Try closing the object
-            const parsed = JSON.parse(fixup + "}") as Record<string, string>;
-            setPlaceholders(parsed);
-          } catch {
-            // Still not parseable — wait for more data
-          }
+      setIsExtractingUrl(true);
+      try {
+        const res = await fetch("/api/extract-job", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          toast.error("Could not extract job", {
+            description:
+              data.error || "Failed to fetch job description from URL",
+          });
+          return;
         }
+        const data = await res.json();
+        if (data.fullText) {
+          editorSetContentRef.current?.(data.fullText);
+          toast.success("Job description extracted", {
+            description: data.title
+              ? `${data.title}${data.company ? ` at ${data.company}` : ""}`
+              : "LinkedIn job loaded",
+          });
+          // Auto-trigger analysis on extracted content
+          analyzeJob(data.fullText);
+        }
+      } catch {
+        toast.error("Failed to extract job description");
+      } finally {
+        setIsExtractingUrl(false);
       }
+    },
+    [analyzeJob],
+  );
 
-      // Final parse with the complete data
-      const finalPlaceholders = JSON.parse(accumulated) as Record<
-        string,
-        string
-      >;
-      pushPlaceholders(finalPlaceholders);
-      setIsStreaming(false);
-      incrementUsage();
-
-      // Extract company name from JD for the resume title
-      const jd = jobDescriptionRef.current;
-      const companyMatch = jd.match(
-        /(?:(?:at|@|for|join|about)\s+)([A-Z][A-Za-z0-9&'.\- ]{1,40})/,
-      );
-      if (companyMatch?.[1]) {
-        setResumeTitle(`Resume — ${companyMatch[1].trim()}`);
-      } else if (finalPlaceholders.JOB_TITLE) {
-        setResumeTitle(`Resume — ${finalPlaceholders.JOB_TITLE}`);
-      } else {
-        setResumeTitle("Resume");
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong");
-      setIsStreaming(false);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [
-    targetPages,
-    incrementUsage,
-    user,
-    savedGeneratedResumes,
-    customPrompt,
-    templateSettings,
-    selectedModel,
-    userProfile,
-    pushPlaceholders,
-    setPlaceholders,
-  ]);
-
-  const handleSaveProfile = useCallback(async (profile: UserProfile) => {
-    setIsSavingProfile(true);
-    try {
-      const res = await fetch("/api/profile", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(profile),
-      });
-      if (res.ok) setUserProfile(profile);
-    } catch {
-      // silently fail
-    } finally {
-      setIsSavingProfile(false);
-    }
-  }, []);
-
-  const handleGenerateProposal = useCallback(
-    async (refineInstruction?: string) => {
+  const handleTailor = useCallback(
+    async (promptOverride?: string) => {
       const jobDescription = jobDescriptionRef.current;
+
       if (!jobDescription.trim()) {
         setError("Please paste a job description first");
         return;
       }
+
       setError(null);
-      setIsProposalLoading(true);
-      setIsProposalStreaming(false);
-      if (!refineInstruction) setProposalText("");
+      setIsLoading(true);
+      setIsStreaming(false);
+      setPlaceholders(null);
 
       try {
-        const res = await fetch("/api/proposal", {
+        // Build resume context from saved generated resumes
+        const resumeTexts: string[] = [];
+
+        // Add saved (generated) resume texts as additional context
+        for (const savedResume of savedGeneratedResumes) {
+          const p = savedResume.placeholders;
+          const parts: string[] = [];
+          if (p.FULL_NAME) parts.push(`Name: ${p.FULL_NAME}`);
+          if (p.JOB_TITLE) parts.push(`Title: ${p.JOB_TITLE}`);
+          if (p.EMAIL) parts.push(`Email: ${p.EMAIL}`);
+          if (p.PHONE) parts.push(`Phone: ${p.PHONE}`);
+          if (p.LOCATION) parts.push(`Location: ${p.LOCATION}`);
+          if (p.SUMMARY) parts.push(`Summary:\n${p.SUMMARY}`);
+          if (p.EXPERIENCE) parts.push(`Experience:\n${p.EXPERIENCE}`);
+          if (p.EDUCATION) parts.push(`Education:\n${p.EDUCATION}`);
+          if (p.SKILLS) parts.push(`Skills: ${p.SKILLS}`);
+          if (p.CERTIFICATIONS)
+            parts.push(`Certifications: ${p.CERTIFICATIONS}`);
+          resumeTexts.push(parts.join("\n\n"));
+        }
+
+        // 4. Tailor with AI (streamed) — if no resumes, pass user info for generation
+        const tailorRes = await fetch("/api/tailor", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             jobDescription,
-            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
-            customPrompt: refineInstruction || customPrompt || undefined,
-            currentProposal: refineInstruction ? proposalText : undefined,
+            resumeTexts,
+            placeholders: DEFAULT_TEMPLATE.placeholders,
+            targetPages,
+            userName:
+              user?.user_metadata?.full_name || user?.user_metadata?.name,
+            userEmail: user?.email,
+            customPrompt: (promptOverride ?? customPrompt) || undefined,
+            templateSettings,
             model: selectedModel,
+            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
           }),
         });
 
-        if (!res.ok) throw new Error("Failed to generate proposal");
+        if (!tailorRes.ok) {
+          throw new Error("Failed to tailor resume");
+        }
 
-        setIsProposalStreaming(true);
-        setIsProposalLoading(false);
-        setProposalText("");
+        setIsStreaming(true);
+        setIsLoading(false);
+        setPlaceholders({});
 
-        const reader = res.body!.getReader();
+        const reader = tailorRes.body!.getReader();
         const decoder = new TextDecoder();
         let accumulated = "";
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+
           accumulated += decoder.decode(value, { stream: true });
-          setProposalText(accumulated);
+
+          // Try parsing the accumulated JSON so far
+          try {
+            const parsed = JSON.parse(accumulated) as Record<string, string>;
+            setPlaceholders(parsed);
+          } catch {
+            // JSON is still incomplete — try to extract partial key-value pairs
+            // by closing the incomplete JSON with a }
+            try {
+              // Remove any trailing incomplete string value (unclosed quote)
+              let fixup = accumulated.trimEnd();
+              // If ends with an unfinished string value, close it
+              if (fixup.endsWith(",")) {
+                fixup = fixup.slice(0, -1);
+              }
+              // Try closing the object
+              const parsed = JSON.parse(fixup + "}") as Record<string, string>;
+              setPlaceholders(parsed);
+            } catch {
+              // Still not parseable — wait for more data
+            }
+          }
         }
 
-        setIsProposalStreaming(false);
+        // Final parse with the complete data
+        const finalPlaceholders = JSON.parse(accumulated) as Record<
+          string,
+          string
+        >;
+        pushPlaceholders(finalPlaceholders);
+        setIsStreaming(false);
         incrementUsage();
+
+        // Extract company name from JD for the resume title
+        const jd = jobDescriptionRef.current;
+        const companyMatch = jd.match(
+          /(?:(?:at|@|for|join|about)\s+)([A-Z][A-Za-z0-9&'.\- ]{1,40})/,
+        );
+        if (companyMatch?.[1]) {
+          setResumeTitle(`Resume — ${companyMatch[1].trim()}`);
+        } else if (finalPlaceholders.JOB_TITLE) {
+          setResumeTitle(`Resume — ${finalPlaceholders.JOB_TITLE}`);
+        } else {
+          setResumeTitle("Resume");
+        }
       } catch (err) {
         setError(err instanceof Error ? err.message : "Something went wrong");
-        setIsProposalStreaming(false);
+        setIsStreaming(false);
       } finally {
-        setIsProposalLoading(false);
+        setIsLoading(false);
       }
     },
     [
-      jobDescriptionRef,
-      userProfile,
-      customPrompt,
-      selectedModel,
-      proposalText,
+      targetPages,
       incrementUsage,
+      user,
+      savedGeneratedResumes,
+      customPrompt,
+      templateSettings,
+      selectedModel,
+      userProfile,
+      pushPlaceholders,
+      setPlaceholders,
     ],
-  );
-
-  const handleAskQuestion = useCallback(
-    async (question: string) => {
-      const id = crypto.randomUUID();
-      setIsQALoading(true);
-      setQAItems((prev) => [
-        ...prev,
-        { id, question, answer: "", isStreaming: true },
-      ]);
-
-      try {
-        const res = await fetch("/api/qa", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            question,
-            jobDescription: jobDescriptionRef.current,
-            userProfile: isProfileEmpty(userProfile) ? undefined : userProfile,
-            model: selectedModel,
-          }),
-        });
-
-        if (!res.ok) throw new Error("Failed to get answer");
-
-        const reader = res.body!.getReader();
-        const decoder = new TextDecoder();
-        let accumulated = "";
-
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-          accumulated += decoder.decode(value, { stream: true });
-          setQAItems((prev) =>
-            prev.map((item) =>
-              item.id === id ? { ...item, answer: accumulated } : item,
-            ),
-          );
-        }
-
-        setQAItems((prev) =>
-          prev.map((item) =>
-            item.id === id ? { ...item, isStreaming: false } : item,
-          ),
-        );
-      } catch {
-        setQAItems((prev) =>
-          prev.map((item) =>
-            item.id === id
-              ? { ...item, answer: "Failed to generate answer.", isStreaming: false }
-              : item,
-          ),
-        );
-      } finally {
-        setIsQALoading(false);
-      }
-    },
-    [jobDescriptionRef, userProfile, selectedModel],
   );
 
   const handleDownloadPdf = useCallback(() => {
@@ -560,256 +479,262 @@ export default function Page() {
 
   return (
     <>
-    <JobDrawer
-      open={jobDrawerOpen}
-      onClose={() => setJobDrawerOpen(false)}
-      jobDescription={jobDescriptionRef.current}
-      userProfile={userProfile}
-      model={selectedModel}
-      onWriteResume={(instructions) => {
-        setJobDrawerOpen(false);
-        handleTailor(instructions || undefined);
-      }}
-    />
-    <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
-      {/* Header */}
-      <div className="mb-6 flex items-center justify-between lg:mb-8">
-        <h1 className="font-mono text-lg font-bold sm:text-xl">Resume Maker</h1>
-        <div className="flex items-center gap-2">
-          {placeholders && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-muted-foreground text-xs"
-              onClick={() => {
-                setPlaceholders(null);
-                setResumeTitle("Resume");
-                setHasJobDescription(false);
-                jobDescriptionRef.current = "";
-                editorResetRef.current?.();
-                sessionStorage.removeItem("resume_cache");
-              }}
-            >
-              Clear
-            </Button>
-          )}
-          {user && (
-            <UserMenu
-              user={user}
-              usageCount={usageCount}
-              maxAttempts={MAX_ATTEMPTS}
-              isSubscribed={isSubscribed}
-              cancelAt={cancelAt}
-            />
-          )}
-          <ThemeToggle />
-        </div>
-      </div>
-
-      <div className="flex flex-1 flex-col items-start gap-8 lg:flex-row">
-        {/* Left panel */}
-        <div className="flex w-full flex-col gap-6 lg:gap-8">
-          <div className="h-fit w-full">
-            <div className="mb-5.5 flex items-center justify-between">
-              <h2 className="font-mono">Job Description</h2>
-              <div className="flex items-center gap-2">
-                {hasJobDescription && (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="h-7 px-2 text-xs"
-                    onClick={() => setJobDrawerOpen(true)}
-                  >
-                    AI ✦
-                  </Button>
-                )}
-                {hasJobDescription && (
-                  <button
-                    type="button"
-                    onClick={() => editorResetRef.current?.()}
-                    className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
-                  >
-                    Reset
-                  </button>
-                )}
-              </div>
-            </div>
-            <TextEditor
-              onTextChange={(text) => {
-                jobDescriptionRef.current = text;
-              }}
-              onHasContentChange={setHasJobDescription}
-              onResetRef={editorResetRef}
-            />
-          </div>
-
-          {error && <p className="text-destructive text-sm">{error}</p>}
-
-          {!authLoading && !user ? (
-            <SignInButton />
-          ) : (
-            <div className="flex flex-wrap items-center gap-3">
-              {/* Primary action */}
-              {!isSubscribed && attemptsLeft <= 0 ? (
-                <Button
-                  size="lg"
-                  className="flex-1"
-                  onClick={handleUpgrade}
-                  disabled={isUpgrading}
-                >
-                  {isUpgrading ? "Redirecting..." : "Upgrade to Pro — $5/mo"}
-                </Button>
-              ) : activeTab === "resume" ? (
-                <Button
-                  size="lg"
-                  className="flex-1"
-                  onClick={() => handleTailor()}
-                  disabled={isLoading || authLoading || !usageLoaded}
-                >
-                  {isLoading ? "Tailoring..." : "Tailor Resume"}
-                </Button>
-              ) : activeTab === "proposal" ? (
-                <Button
-                  size="lg"
-                  className="flex-1"
-                  onClick={() => handleGenerateProposal()}
-                  disabled={
-                    isProposalLoading ||
-                    isProposalStreaming ||
-                    authLoading ||
-                    !usageLoaded
-                  }
-                >
-                  {isProposalLoading ? "Generating..." : "Generate Proposal"}
-                </Button>
-              ) : null}
-
-              {/* Resume-only controls */}
-              {activeTab === "resume" && (
-                <>
-                  <TemplateSettingsDialog
-                    settings={templateSettings}
-                    onSave={(newSettings) => {
-                      // Apply immediately to UI
-                      setTemplateSettings(newSettings);
-                      // Debounce the DB save
-                      if (settingsSaveTimer.current) clearTimeout(settingsSaveTimer.current);
-                      settingsSaveTimer.current = setTimeout(async () => {
-                        try {
-                          await fetch("/api/template-settings", {
-                            method: "PUT",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify(newSettings),
-                          });
-                        } catch {
-                          // silently fail
-                        }
-                      }, 500);
-                    }}
-                    isSaving={isSavingSettings}
-                    disabled={!user}
-                  />
-
-                  <ResumeAnalyzerDialog
-                    placeholders={placeholders}
-                    jobDescription={jobDescriptionRef.current}
-                    disabled={!user}
-                    onAcceptSuggestion={(section, newText) => {
-                      if (placeholders) {
-                        pushPlaceholders({
-                          ...placeholders,
-                          [section]: newText,
-                        });
-                      }
-                    }}
-                  />
-
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground text-xs whitespace-nowrap">
-                      Pages
-                    </span>
-                    <div className="border-input flex items-center border">
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() =>
-                          setTargetPages((p) => Math.max(1, p - 1))
-                        }
-                        disabled={targetPages <= 1}
-                        aria-label="Decrease pages"
-                      >
-                        −
-                      </button>
-                      <span className="w-6 text-center text-sm font-medium tabular-nums">
-                        {targetPages}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                        onClick={() =>
-                          setTargetPages((p) => Math.min(2, p + 1))
-                        }
-                        disabled={targetPages >= 2}
-                        aria-label="Increase pages"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-muted-foreground text-xs">Base data</span>
-              <UserProfileDialog
-                profile={userProfile}
-                onSave={handleSaveProfile}
-                isSaving={isSavingProfile}
-                disabled={!user}
-                hasProfile={!isProfileEmpty(userProfile)}
-              />
-            </div>
-            <ResumeDropzone
-              savedGeneratedResumes={savedGeneratedResumes}
-              onSavedResumesChange={setSavedGeneratedResumes}
-              onLoadResume={(p) => pushPlaceholders(p)}
-            />
-          </div>
-        </div>
-
-        {/* Right panel */}
-        <div className="w-full">
-          {/* Tab header row */}
-          <div className="mb-4 flex items-center justify-between gap-2">
-            {/* Tabs */}
-            <div className="flex items-center gap-0">
-              {(["resume", "proposal", "qa"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setActiveTab(tab)}
-                  className={`cursor-pointer border-b-2 pr-4 pb-1 font-mono text-base capitalize transition-colors ${
-                    activeTab === tab
-                      ? "border-foreground text-foreground"
-                      : "text-muted-foreground hover:text-foreground border-transparent"
-                  }`}
-                >
-                  {tab === "qa" ? "Q&A" : tab}
-                </button>
-              ))}
-            </div>
-            {/* Model selector always visible */}
+      <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
+        {/* Header */}
+        <div className="mb-6 flex items-center justify-between lg:mb-8">
+          <h1 className="font-mono text-lg font-bold sm:text-xl">
+            Resume Maker
+          </h1>
+          <div className="flex items-center gap-2">
+            {placeholders && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-muted-foreground text-xs"
+                onClick={() => {
+                  setPlaceholders(null);
+                  setResumeTitle("Resume");
+                  setHasJobDescription(false);
+                  jobDescriptionRef.current = "";
+                  editorResetRef.current?.();
+                  sessionStorage.removeItem("resume_cache");
+                }}
+              >
+                Clear
+              </Button>
+            )}
             <ModelSelector
               selectedModelId={selectedModel}
               onModelChange={setSelectedModel}
             />
+            {user && (
+              <UserMenu
+                user={user}
+                usageCount={usageCount}
+                maxAttempts={MAX_ATTEMPTS}
+                isSubscribed={isSubscribed}
+                cancelAt={cancelAt}
+              />
+            )}
+            <ThemeToggle />
+          </div>
+        </div>
+
+        <div className="flex flex-1 flex-col items-start gap-8 lg:flex-row">
+          {/* Left panel */}
+          <div className="flex w-full flex-col gap-6 lg:gap-8">
+            <div className="h-fit w-full space-y-3">
+              {/* Job Description — collapsible */}
+              <div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    hasJobDescription && setJobDescCollapsed(!jobDescCollapsed)
+                  }
+                  className={cn(
+                    "mb-2 flex w-full items-center justify-between",
+                    hasJobDescription ? "cursor-pointer" : "cursor-default",
+                  )}
+                >
+                  <h2 className="font-mono">Job Description</h2>
+                  <div className="flex items-center gap-2">
+                    {hasJobDescription && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          editorResetRef.current?.();
+                          setJobDescCollapsed(false);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.stopPropagation();
+                            editorResetRef.current?.();
+                            setJobDescCollapsed(false);
+                          }
+                        }}
+                        className="text-muted-foreground hover:text-destructive cursor-pointer text-xs transition-colors"
+                      >
+                        Reset
+                      </span>
+                    )}
+                    {hasJobDescription && (
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 16 16"
+                        fill="none"
+                        className={cn(
+                          "text-muted-foreground transition-transform duration-200",
+                          jobDescCollapsed ? "" : "rotate-180",
+                        )}
+                      >
+                        <path
+                          d="M4 6l4 4 4-4"
+                          stroke="currentColor"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
+                    )}
+                  </div>
+                </button>
+                <div
+                  className={cn(
+                    "grid transition-[grid-template-rows] duration-300 ease-in-out",
+                    jobDescCollapsed ? "grid-rows-[0fr]" : "grid-rows-[1fr]",
+                  )}
+                >
+                  <div className="overflow-hidden">
+                    <TextEditor
+                      onTextChange={(text) => {
+                        jobDescriptionRef.current = text;
+                        // Debounced auto-analysis when substantial text is pasted
+                        // Skip if it looks like a URL or we're currently extracting from a URL
+                        const isUrl = /^https?:\/\/\S+$/i.test(text.trim());
+                        if (
+                          text.trim().length > 80 &&
+                          !isExtractingUrl &&
+                          !isUrl
+                        ) {
+                          if (analyzeTimerRef.current)
+                            clearTimeout(analyzeTimerRef.current);
+                          analyzeTimerRef.current = setTimeout(
+                            () => analyzeJob(text),
+                            1500,
+                          );
+                        }
+                      }}
+                      onHasContentChange={(has) => {
+                        setHasJobDescription(has);
+                        if (!has) {
+                          setJobAnalysis(null);
+                          setIsAnalyzingJob(false);
+                          analysisJobRef.current = "";
+                          setJobDescCollapsed(false);
+                        }
+                      }}
+                      onResetRef={editorResetRef}
+                      onSetContentRef={editorSetContentRef}
+                      onUrlDetected={handleUrlDetected}
+                    />
+                  </div>
+                </div>
+                {isExtractingUrl && (
+                  <div className="text-muted-foreground mt-2 flex items-center gap-2 text-xs">
+                    <div className="border-primary size-3 animate-spin rounded-full border-2 border-t-transparent" />
+                    Extracting job from LinkedIn...
+                  </div>
+                )}
+              </div>
+
+              {/* Job Analysis — inline panel */}
+              {(jobAnalysis || isAnalyzingJob) && (
+                <JobAnalysisPanel
+                  analysis={jobAnalysis}
+                  isAnalyzing={isAnalyzingJob}
+                  hasProfile={!isProfileEmpty(userProfile)}
+                  onReady={() => {
+                    // Don't auto-collapse — let user control it
+                  }}
+                  onReanalyze={() => {
+                    analysisJobRef.current = "";
+                    analyzeJob(jobDescriptionRef.current);
+                  }}
+                />
+              )}
+            </div>
+
+            {error && <p className="text-destructive text-sm">{error}</p>}
+
+            {!authLoading && !user ? (
+              <SignInButton />
+            ) : (
+              <div className="flex flex-wrap items-center gap-3">
+                {/* Primary action */}
+                {!isSubscribed && attemptsLeft <= 0 ? (
+                  <Button
+                    size="lg"
+                    className="flex-1"
+                    onClick={handleUpgrade}
+                    disabled={isUpgrading}
+                  >
+                    {isUpgrading ? "Redirecting..." : "Upgrade to Pro — $5/mo"}
+                  </Button>
+                ) : (
+                  <Button
+                    size="lg"
+                    className="flex-1"
+                    onClick={() => handleTailor()}
+                    disabled={isLoading || authLoading || !usageLoaded}
+                  >
+                    {isLoading ? "Tailoring..." : "Tailor Resume"}
+                  </Button>
+                )}
+
+                {/* Resume controls */}
+                <TemplateSettingsDialog
+                  settings={templateSettings}
+                  onSave={(newSettings) => {
+                    // Apply immediately to UI
+                    setTemplateSettings(newSettings);
+                    // Debounce the DB save
+                    if (settingsSaveTimer.current)
+                      clearTimeout(settingsSaveTimer.current);
+                    settingsSaveTimer.current = setTimeout(async () => {
+                      try {
+                        await fetch("/api/template-settings", {
+                          method: "PUT",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify(newSettings),
+                        });
+                      } catch {
+                        // silently fail
+                      }
+                    }, 500);
+                  }}
+                  isSaving={isSavingSettings}
+                  disabled={!user}
+                />
+
+                <div className="flex items-center gap-2">
+                  <span className="text-muted-foreground text-xs whitespace-nowrap">
+                    Pages
+                  </span>
+                  <div className="border-input flex items-center border">
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
+                      disabled={targetPages <= 1}
+                      aria-label="Decrease pages"
+                    >
+                      −
+                    </button>
+                    <span className="w-6 text-center text-sm font-medium tabular-nums">
+                      {targetPages}
+                    </span>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                      onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
+                      disabled={targetPages >= 2}
+                      aria-label="Increase pages"
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
           </div>
 
-          {/* Resume tab — title input + track + preview */}
-          {activeTab === "resume" && (
+          {/* Right panel */}
+          <div className="w-full">
+            <h2 className="mb-2 font-mono">Resume</h2>
             <>
               {placeholders && (
                 <div className="mb-4 flex items-center gap-2">
@@ -822,6 +747,20 @@ export default function Page() {
                   />
                   {user && (
                     <>
+                      <ResumeAnalyzerDialog
+                        placeholders={placeholders}
+                        jobDescription={jobDescriptionRef.current}
+                        disabled={!user}
+                        label="Score"
+                        onAcceptSuggestion={(section, newText) => {
+                          if (placeholders) {
+                            pushPlaceholders({
+                              ...placeholders,
+                              [section]: newText,
+                            });
+                          }
+                        }}
+                      />
                       <Button
                         size="sm"
                         variant="outline"
@@ -833,7 +772,11 @@ export default function Page() {
                       <TrackApplicationDialog
                         open={trackDialogOpen}
                         onOpenChange={setTrackDialogOpen}
-                        position={placeholders.JOB_TITLE || resumeTitle.split("\u2014")[0]?.trim() || ""}
+                        position={
+                          placeholders.JOB_TITLE ||
+                          resumeTitle.split("\u2014")[0]?.trim() ||
+                          ""
+                        }
                         company={resumeTitle.split("\u2014")[1]?.trim() || ""}
                         resumeData={placeholders}
                         cities={existingCities}
@@ -845,11 +788,21 @@ export default function Page() {
                             body: JSON.stringify(data),
                           });
                           // Update autocomplete lists with new values
-                          if (data.notes && !existingCities.includes(data.notes)) {
-                            setExistingCities((prev) => [...prev, data.notes].sort());
+                          if (
+                            data.notes &&
+                            !existingCities.includes(data.notes)
+                          ) {
+                            setExistingCities((prev) =>
+                              [...prev, data.notes].sort(),
+                            );
                           }
-                          if (data.platform && !existingPlatforms.includes(data.platform)) {
-                            setExistingPlatforms((prev) => [...prev, data.platform].sort());
+                          if (
+                            data.platform &&
+                            !existingPlatforms.includes(data.platform)
+                          ) {
+                            setExistingPlatforms((prev) =>
+                              [...prev, data.platform].sort(),
+                            );
                           }
                           toast.success("Application tracked", {
                             description: `${data.position}${data.company ? ` at ${data.company}` : ""}`,
@@ -886,37 +839,9 @@ export default function Page() {
                 }
               />
             </>
-          )}
-
-          {/* Proposal tab */}
-          {activeTab === "proposal" && (
-            <ProposalPreview
-              proposal={proposalText}
-              isLoading={isProposalLoading}
-              isStreaming={isProposalStreaming}
-              onRefine={handleGenerateProposal}
-              onProposalChange={setProposalText}
-            />
-          )}
-
-          {/* Q&A tab */}
-          {activeTab === "qa" && (
-            <QAView
-              items={qaItems}
-              isLoading={isQALoading}
-              onAsk={handleAskQuestion}
-              onAnswerChange={(id, answer) => {
-                setQAItems((prev) =>
-                  prev.map((item) =>
-                    item.id === id ? { ...item, answer } : item,
-                  ),
-                );
-              }}
-            />
-          )}
+          </div>
         </div>
       </div>
-    </div>
     </>
   );
 }
@@ -988,4 +913,3 @@ function ModelSelector({
     </DropdownMenu>
   );
 }
-

@@ -43,48 +43,41 @@ export function Footer() {
           <div className="text-muted-foreground space-y-4 text-sm">
             <div className="space-y-1">
               <p className="text-foreground font-medium">
-                1. Upload your resume
+                1. Upload your resume &amp; fill your profile
               </p>
               <p>
-                Drop one or more PDF resumes. These are used as the base for
-                tailoring.
+                Drop one or more PDF resumes and complete your profile details
+                — skills, experience, education, and languages. This gives the
+                AI full context to work with.
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-foreground font-medium">
-                2. Paste the job description
+                2. Paste a job description or LinkedIn URL
               </p>
               <p>
-                Copy the full job posting and paste it into the editor. The more
-                detail, the better the result.
+                Copy the full job posting into the editor, or paste a LinkedIn
+                job URL and it will be extracted automatically.
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-foreground font-medium">
-                3. Tailor your resume
+                3. AI job fit analysis
               </p>
               <p>
-                Click &quot;Tailor Resume&quot; and AI will rewrite your resume
-                to match the job — adjusting keywords, skills, and phrasing.
+                The AI automatically analyzes the job — extracting key skills,
+                writing an overview, and scoring how well your profile matches
+                the role.
               </p>
             </div>
             <div className="space-y-1">
               <p className="text-foreground font-medium">
-                4. Edit &amp; download
+                4. Tailor, edit &amp; track
               </p>
               <p>
-                Review the generated resume, make any edits directly in the
-                preview, then download as PDF.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <p className="text-foreground font-medium">
-                5. Track your application
-              </p>
-              <p>
-                Click &quot;Track Application&quot; to save your tailored resume
-                and log the job in your applications tracker — keep tabs on
-                every role you apply to.
+                If the job is a good fit, tailor your resume with one click.
+                Edit the result directly in the preview, download as PDF, and
+                track every application you submit.
               </p>
             </div>
           </div>

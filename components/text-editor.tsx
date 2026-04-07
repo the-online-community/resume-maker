@@ -29,15 +29,23 @@ export default function TextEditor({
   onTextChange,
   onHasContentChange,
   onResetRef,
+  onUrlDetected,
+  onSetContentRef,
 }: {
   onTextChange?: (text: string) => void;
   onHasContentChange?: (hasContent: boolean) => void;
   onResetRef?: React.MutableRefObject<(() => void) | null>;
+  onUrlDetected?: (url: string) => void;
+  onSetContentRef?: React.MutableRefObject<((text: string) => void) | null>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hasContent, setHasContent] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const urlDetectedRef = useRef(false);
+
+  // LinkedIn URL pattern
+  const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/jobs\/(?:view|search)\S*/i;
 
   // ResizeObserver reliably detects overflow after DOM layout updates
   useEffect(() => {
@@ -83,6 +91,7 @@ export default function TextEditor({
     localStorage.removeItem("installation-next-demo");
     setHasContent(false);
     setExpanded(false);
+    urlDetectedRef.current = false;
     onTextChange?.("");
     onHasContentChange?.(false);
   }, [editor, onTextChange, onHasContentChange]);
@@ -93,6 +102,26 @@ export default function TextEditor({
       onResetRef.current = handleReset;
     }
   }, [onResetRef, handleReset]);
+
+  // Expose setContent to parent via ref
+  useEffect(() => {
+    if (onSetContentRef) {
+      onSetContentRef.current = (text: string) => {
+        const lines = text.split("\n");
+        const value: Value = lines.map((line) => ({
+          children: [{ text: line }],
+          type: "p",
+        }));
+        editor.tf.setValue(value);
+        localStorage.setItem("installation-next-demo", JSON.stringify(value));
+        const hasText = text.trim().length > 0;
+        setHasContent(hasText);
+        onHasContentChange?.(hasText);
+        onTextChange?.(text);
+        urlDetectedRef.current = false;
+      };
+    }
+  }, [onSetContentRef, editor, onTextChange, onHasContentChange]);
 
   // Fire onTextChange on mount with saved text so the parent has the value
   useEffect(() => {
@@ -133,6 +162,15 @@ export default function TextEditor({
           .join(" ")
           .trim();
         onTextChange?.(plainText);
+
+        // Detect LinkedIn URL paste
+        if (onUrlDetected && !urlDetectedRef.current) {
+          const match = plainText.match(LINKEDIN_URL_RE);
+          if (match) {
+            urlDetectedRef.current = true;
+            onUrlDetected(match[0]);
+          }
+        }
       }}
     >
       <div className="relative border">

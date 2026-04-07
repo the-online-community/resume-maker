@@ -11,18 +11,43 @@ interface AnalyzeJobRequest {
 }
 
 interface AnalyzeJobResponse {
+  overview: string;
   skills: string[];
+  matchedSkills: string[];
+  missingSkills: string[];
+  matchScore: number;
   summary: string;
 }
 
-function buildProfileSkills(profile?: UserProfile): string {
-  if (!profile?.skills?.length) return "";
-  return `\n\nCANDIDATE SKILLS: ${profile.skills.join(", ")}`;
+function buildProfileContext(profile?: UserProfile): string {
+  if (!profile) return "";
+  const parts: string[] = [];
+  if (profile.skills?.length) {
+    parts.push(`CANDIDATE SKILLS: ${profile.skills.join(", ")}`);
+  }
+  if (profile.experience?.length) {
+    const roles = profile.experience.map(
+      (e) => `${e.title} at ${e.company}`,
+    );
+    parts.push(`EXPERIENCE: ${roles.join("; ")}`);
+  }
+  if (profile.education?.length) {
+    const edu = profile.education.map(
+      (e) => `${e.degree} from ${e.institution}`,
+    );
+    parts.push(`EDUCATION: ${edu.join("; ")}`);
+  }
+  return parts.length > 0 ? `\n\n${parts.join("\n")}` : "";
 }
 
-const SYSTEM_PROMPT = `You are a career advisor. Given a job description, extract key information and return a JSON object with exactly these two fields:
-- "skills": array of 8-15 key skills/technologies/qualifications required (short phrases, no duplicates)
-- "summary": 2-3 sentence assessment of what the role is and what kind of candidate would be a strong fit
+const SYSTEM_PROMPT = `You are a career advisor. Given a job description (and optionally a candidate profile), extract key information and return a JSON object with exactly these fields:
+
+- "overview": 2-3 sentence summary of what the role is, the company, and key responsibilities. Be concise.
+- "skills": array of 8-15 key skills/technologies/qualifications required by the job (short phrases, no duplicates)
+- "matchedSkills": array of skills from the job requirements that the candidate HAS (subset of "skills"). If no candidate profile provided, return empty array.
+- "missingSkills": array of skills from the job requirements that the candidate is MISSING. If no candidate profile provided, return empty array.
+- "matchScore": integer 0-100 representing how well the candidate matches this role based on skills overlap and experience relevance. If no candidate profile, return 0.
+- "summary": 1-2 sentence personalized fit assessment. If no candidate profile, write a generic "ideal candidate" description.
 
 Return ONLY valid JSON, no markdown, no extra text.`;
 
@@ -43,8 +68,8 @@ export async function POST(request: Request) {
     }
 
     const modelDef = MODELS.find((m) => m.id === modelId) ?? MODELS[0];
-    const profileContext = buildProfileSkills(userProfile);
-    const userMessage = `JOB DESCRIPTION:\n${jobDescription}${profileContext}\n\nExtract the required skills and write a fit summary.`;
+    const profileContext = buildProfileContext(userProfile);
+    const userMessage = `JOB DESCRIPTION:\n${jobDescription}${profileContext}\n\nAnalyze this job and evaluate candidate fit.`;
 
     // ── Anthropic ─────────────────────────────────────────────────────────────
     if (modelDef.provider === "anthropic") {

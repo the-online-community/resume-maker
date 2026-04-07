@@ -73,6 +73,27 @@ function buildProfileContext(
     }
   }
 
+  if (profile.projects?.length) {
+    lines.push(
+      "\nProjects & Achievements (select the most relevant for the target job — write bullet points grounded in these, do not invent):",
+    );
+    for (const p of profile.projects) {
+      const parts = [`• ${p.name}`];
+      if (p.role) parts[0] += ` (${p.role})`;
+      if (p.stack) parts.push(`  Stack: ${p.stack}`);
+      if (p.description) parts.push(`  ${p.description}`);
+      if (p.highlights?.length)
+        parts.push(`  Key highlights: ${p.highlights.join("; ")}`);
+      lines.push(parts.join("\n"));
+    }
+  }
+
+  if (profile.languages?.length) {
+    lines.push(
+      `\nLanguages: ${profile.languages.map((l) => `${l.language} (${l.proficiency})`).join(", ")}`,
+    );
+  }
+
   return lines.join("\n");
 }
 

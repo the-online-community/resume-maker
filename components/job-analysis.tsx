@@ -20,6 +20,8 @@ interface JobAnalysisProps {
   hasProfile: boolean;
   onReady?: () => void;
   onReanalyze?: () => void;
+  onAddSkill?: (skill: string) => void;
+  addedSkills?: Set<string>;
 }
 
 function ScoreRing({ score }: { score: number }) {
@@ -58,7 +60,7 @@ function ScoreRing({ score }: { score: number }) {
           className={cn("transition-all duration-700 ease-out", color)}
         />
       </svg>
-      <span className={cn("absolute text-xs font-bold", color)}>{score}%</span>
+      <span className={cn("absolute text-[10px] font-bold", color)}>{score}%</span>
     </div>
   );
 }
@@ -78,6 +80,8 @@ export function JobAnalysisPanel({
   hasProfile,
   onReady,
   onReanalyze,
+  onAddSkill,
+  addedSkills,
 }: JobAnalysisProps) {
   const [collapsed, setCollapsed] = useState(false);
   const prevAnalysisRef = useRef<JobAnalysis | null>(null);
@@ -215,6 +219,33 @@ export function JobAnalysisPanel({
                         const missing = analysis.missingSkills.some(
                           (m) => m.toLowerCase() === skill.toLowerCase(),
                         );
+                        const justAdded = addedSkills?.has(skill.toLowerCase());
+
+                        if (justAdded) {
+                          return (
+                            <Badge
+                              key={skill}
+                              variant="default"
+                              className="bg-green-100 text-green-800 text-xs dark:bg-green-900/30 dark:text-green-300"
+                            >
+                              {skill} ✓
+                            </Badge>
+                          );
+                        }
+
+                        if (missing && onAddSkill) {
+                          return (
+                            <Badge
+                              key={skill}
+                              variant="outline"
+                              className="cursor-pointer border-dashed text-xs opacity-60 transition-opacity hover:opacity-100"
+                              onClick={() => onAddSkill(skill)}
+                            >
+                              + {skill}
+                            </Badge>
+                          );
+                        }
+
                         return (
                           <Badge
                             key={skill}
@@ -238,7 +269,7 @@ export function JobAnalysisPanel({
                         </span>
                         <span className="flex items-center gap-1">
                           <span className="border-muted-foreground inline-block size-1.5 rounded-full border border-dashed" />
-                          Missing
+                          {onAddSkill ? "Click to add" : "Missing"}
                         </span>
                       </div>
                     )}

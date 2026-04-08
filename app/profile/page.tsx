@@ -4,18 +4,20 @@ import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 
+import { OnboardingChecklist } from "@/components/profile/onboarding-checklist";
+import { ProfileCertificationsTab } from "@/components/profile/profile-certifications-tab";
 import { ProfileContactTab } from "@/components/profile/profile-contact-tab";
 import { ProfileEducationTab } from "@/components/profile/profile-education-tab";
 import { ProfileExperienceTab } from "@/components/profile/profile-experience-tab";
 import { ProfileLanguagesTab } from "@/components/profile/profile-languages-tab";
 import { ProfileMeTab } from "@/components/profile/profile-me-tab";
 import { ProfileProjectsTab } from "@/components/profile/profile-projects-tab";
-import { ProfileResumeImport } from "@/components/profile/profile-resume-import";
 import { ProfileSkillsTab } from "@/components/profile/profile-skills-tab";
+import { ResumeImportDialog } from "@/components/profile/resume-import-dialog";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useUser } from "@/hooks/use-user";
-import { EMPTY_PROFILE, migrateSkills, type UserProfile } from "@/lib/profile";
+import { EMPTY_PROFILE, migrateContactFields, migrateSkills, type UserProfile } from "@/lib/profile";
 
 export default function ProfilePage() {
   const { user, loading: userLoading } = useUser();
@@ -23,6 +25,10 @@ export default function ProfilePage() {
   const [isSaving, setIsSaving] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("me");
+  const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(
+    null,
+  );
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
 
   // Redirect if not authenticated
   useEffect(() => {
@@ -42,7 +48,11 @@ export default function ProfilePage() {
             ...EMPTY_PROFILE,
             ...data,
             skills: migrateSkills(data.skills),
+            contact_fields: migrateContactFields(data),
           });
+          setOnboardingComplete(data.onboarding_complete ?? false);
+        } else {
+          setOnboardingComplete(false);
         }
       })
       .catch(console.error)
@@ -66,6 +76,32 @@ export default function ProfilePage() {
     }
   }, [draft]);
 
+  const handleSkipOnboarding = useCallback(async () => {
+    setOnboardingComplete(true);
+    try {
+      await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, onboarding_complete: true }),
+      });
+    } catch {
+      // silently fail — non-critical
+    }
+  }, [draft]);
+
+  const handleOnboardingComplete = useCallback(async () => {
+    setOnboardingComplete(true);
+    try {
+      await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...draft, onboarding_complete: true }),
+      });
+    } catch {
+      // silently fail
+    }
+  }, [draft]);
+
   if (userLoading || isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -82,6 +118,7 @@ export default function ProfilePage() {
     "experience",
     "education",
     "projects",
+    "certifications",
     "languages",
   ];
   const showSave = editTabs.includes(activeTab);
@@ -102,6 +139,26 @@ export default function ProfilePage() {
         </Button>
       </div>
 
+      {/* Onboarding checklist — first-time users only */}
+      {onboardingComplete === false && (
+        <OnboardingChecklist
+          draft={draft}
+          activeTab={activeTab}
+          onTabChange={setActiveTab}
+          onImportClick={() => setImportDialogOpen(true)}
+          onSkip={handleSkipOnboarding}
+          onComplete={handleOnboardingComplete}
+        />
+      )}
+
+      {/* Resume import dialog */}
+      <ResumeImportDialog
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        draft={draft}
+        onChange={setDraft}
+      />
+
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="w-full flex-wrap">
           <TabsTrigger value="me">Me</TabsTrigger>
@@ -110,13 +167,17 @@ export default function ProfilePage() {
           <TabsTrigger value="experience">Experience</TabsTrigger>
           <TabsTrigger value="education">Education</TabsTrigger>
           <TabsTrigger value="projects">Projects</TabsTrigger>
+          <TabsTrigger value="certifications">Certifications</TabsTrigger>
           <TabsTrigger value="languages">Languages</TabsTrigger>
-          <TabsTrigger value="import">Resume Import</TabsTrigger>
         </TabsList>
 
         <div className="mt-6">
           <TabsContent value="me">
-            <ProfileMeTab draft={draft} onTabChange={setActiveTab} />
+            <ProfileMeTab
+              draft={draft}
+              onTabChange={setActiveTab}
+              onImportClick={() => setImportDialogOpen(true)}
+            />
           </TabsContent>
 
           <TabsContent value="contact">
@@ -139,12 +200,12 @@ export default function ProfilePage() {
             <ProfileProjectsTab draft={draft} onChange={setDraft} />
           </TabsContent>
 
-          <TabsContent value="languages">
-            <ProfileLanguagesTab draft={draft} onChange={setDraft} />
+          <TabsContent value="certifications">
+            <ProfileCertificationsTab draft={draft} onChange={setDraft} />
           </TabsContent>
 
-          <TabsContent value="import">
-            <ProfileResumeImport draft={draft} onChange={setDraft} />
+          <TabsContent value="languages">
+            <ProfileLanguagesTab draft={draft} onChange={setDraft} />
           </TabsContent>
         </div>
       </Tabs>

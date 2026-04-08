@@ -68,6 +68,11 @@ export const RESUME_CSS = `
 
   .resume-section {
     margin-bottom: 20px;
+    break-inside: avoid;
+  }
+
+  .resume-header {
+    break-inside: avoid;
   }
 
   .resume-section h2 {
@@ -112,5 +117,7 @@ export const RESUME_CSS = `
 export const RESUME_PRINT_CSS = `
   @media print {
     @page { margin: 0.5in; size: letter; }
+    .resume-section { break-inside: avoid; }
+    .resume-header { break-inside: avoid; }
   }
 `;

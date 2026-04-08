@@ -3,9 +3,10 @@
   "configurations": [
     {
       "name": "Next.js Dev",
-      "runtimeExecutable": "/Users/khaled/.nvm/versions/node/v22.21.1/bin/node",
-      "runtimeArgs": ["/Users/khaled/.nvm/versions/node/v22.21.1/lib/node_modules/corepack/shims/pnpm", "dev"],
-      "port": 3000
+      "runtimeExecutable": "/Users/khaled/.nvm/versions/node/v22.21.1/bin/pnpm",
+      "runtimeArgs": ["dev"],
+      "port": 3001,
+      "autoPort": true
     }
   ]
 }

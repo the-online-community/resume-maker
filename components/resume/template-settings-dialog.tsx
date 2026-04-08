@@ -19,7 +19,6 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  ALL_HEADER_FIELDS,
   ALL_SECTIONS,
   DEFAULT_SETTINGS,
   type TemplateSettings,
@@ -75,16 +74,6 @@ export function TemplateSettingsDialog({
     });
   };
 
-  const toggleHeaderField = (key: string) => {
-    const has = settings.headerFields.includes(key);
-    update({
-      ...settings,
-      headerFields: has
-        ? settings.headerFields.filter((f) => f !== key)
-        : [...settings.headerFields, key],
-    });
-  };
-
   // Build ordered list: enabled sections first (in order), then disabled ones
   const enabledSections = settings.sections;
   const disabledSections = ALL_SECTIONS.filter(
@@ -114,8 +103,8 @@ export function TemplateSettingsDialog({
         <DialogHeader>
           <DialogTitle>Template Settings</DialogTitle>
           <DialogDescription>
-            Customize which sections and contact fields appear in your resume,
-            their order, and formatting options.
+            Customize which sections appear in your resume, their order, and
+            formatting options. Contact fields are managed in your profile.
           </DialogDescription>
         </DialogHeader>
 
@@ -182,32 +171,6 @@ export function TemplateSettingsDialog({
                   </div>
                 );
               })}
-            </div>
-          </fieldset>
-
-          {/* ── Header Fields ── */}
-          <fieldset>
-            <legend className="mb-2 text-sm font-semibold">
-              Header Contact Fields
-            </legend>
-            <p className="text-muted-foreground mb-3 text-xs">
-              Choose which contact details appear below your name.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              {ALL_HEADER_FIELDS.map((field) => (
-                <label
-                  key={field.key}
-                  className="flex cursor-pointer items-center gap-2 text-sm"
-                >
-                  <input
-                    type="checkbox"
-                    checked={settings.headerFields.includes(field.key)}
-                    onChange={() => toggleHeaderField(field.key)}
-                    className="accent-primary size-3.5 cursor-pointer"
-                  />
-                  {field.label}
-                </label>
-              ))}
             </div>
           </fieldset>
 

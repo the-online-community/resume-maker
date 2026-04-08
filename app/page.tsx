@@ -1,13 +1,14 @@
 "use client";
 
 import { toast } from "sonner";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 
 import { JobAnalysisPanel, type JobAnalysis } from "@/components/job-analysis";
-import { ResumeAnalyzerDialog } from "@/components/resume/resume-analyzer-dialog";
+import { ScorePanel } from "@/components/resume/score-panel";
 import ResumePreview from "@/components/resume/resume-preview";
+import type { KeywordFix, ScoreResult } from "@/lib/score-types";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import SignInButton from "@/components/sign-in-button";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -26,7 +27,7 @@ import { UserMenu } from "@/components/user-menu";
 import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
-import { EMPTY_PROFILE, isProfileEmpty, migrateSkills, type UserProfile } from "@/lib/profile";
+import { categorizeSkills, EMPTY_PROFILE, flattenSkills, isProfileEmpty, migrateContactFields, migrateSkills, type UserProfile } from "@/lib/profile";
 import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
 import {
   DEFAULT_SETTINGS,
@@ -88,12 +89,31 @@ export default function Page() {
   const analyzeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [resumeTitle, setResumeTitle] = useState("Resume");
 
-  const MAX_ATTEMPTS = 5;
+  const [maxAttempts, setMaxAttempts] = useState(5);
   const [usageCount, setUsageCount] = useState(0);
   const [usageLoaded, setUsageLoaded] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
-  const [isUpgrading, setIsUpgrading] = useState(false);
   const [cancelAt, setCancelAt] = useState<string | null>(null);
+  const [resetsAt, setResetsAt] = useState<string | undefined>(undefined);
+
+  // Score panel state
+  const [scoreResult, setScoreResult] = useState<ScoreResult | null>(() => {
+    try {
+      const cached = sessionStorage.getItem("resume_score_cache");
+      if (cached) {
+        const { result } = JSON.parse(cached);
+        return result ?? null;
+      }
+    } catch { /* ignore */ }
+    return null;
+  });
+  const [showScorePanel, setShowScorePanel] = useState(false);
+  const [isScoring, setIsScoring] = useState(false);
+  const [scoreProgress, setScoreProgress] = useState(0);
+  const scoreProgressRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [acceptedFixIds, setAcceptedFixIds] = useState<Set<string>>(new Set());
+  const [skippedFixIds, setSkippedFixIds] = useState<Set<string>>(new Set());
+  const [staleFixIds, setStaleFixIds] = useState<Set<string>>(new Set());
 
   // Model selection
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
@@ -176,8 +196,10 @@ export default function Page() {
       .then((data: UserProfile | null) => {
         if (data) {
           setUserProfile({
+            ...EMPTY_PROFILE,
             ...data,
             skills: migrateSkills(data.skills),
+            contact_fields: migrateContactFields(data),
           });
         }
         if (!data || isProfileEmpty({ ...EMPTY_PROFILE, ...data, skills: migrateSkills(data?.skills) })) {
@@ -196,17 +218,59 @@ export default function Page() {
       .then(
         (data: {
           count: number;
+          max: number;
           subscribed?: boolean;
           cancelAt?: string | null;
+          resetsAt?: string;
         }) => {
           setUsageCount(data.count);
+          setMaxAttempts(data.max);
           setIsSubscribed(!!data.subscribed);
           setCancelAt(data.cancelAt ?? null);
+          setResetsAt(data.resetsAt);
         },
       )
       .catch(() => {})
       .finally(() => setUsageLoaded(true));
   }, [user]);
+
+  // Handle referral code from URL (?ref=CODE) — store in localStorage for OAuth flow
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const refCode = params.get("ref");
+      if (refCode) {
+        localStorage.setItem("referral_code", refCode);
+        // Clean up URL
+        const url = new URL(window.location.href);
+        url.searchParams.delete("ref");
+        window.history.replaceState({}, "", url.toString());
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Process referral after authentication
+  useEffect(() => {
+    if (!user) return;
+    try {
+      const refCode = localStorage.getItem("referral_code");
+      if (!refCode) return;
+      // Only process for users with 0 usage (new users)
+      if (usageLoaded && usageCount === 0) {
+        fetch("/api/referral", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ code: refCode }),
+        })
+          .then(() => localStorage.removeItem("referral_code"))
+          .catch(() => {});
+      }
+    } catch {
+      // ignore
+    }
+  }, [user, usageLoaded, usageCount]);
 
   const incrementUsage = useCallback(async () => {
     try {
@@ -218,20 +282,278 @@ export default function Page() {
     }
   }, []);
 
-  const attemptsLeft = MAX_ATTEMPTS - usageCount;
+  const attemptsLeft = maxAttempts - usageCount;
 
-  const handleUpgrade = useCallback(async () => {
-    setIsUpgrading(true);
-    try {
-      const res = await fetch("/api/stripe/checkout", { method: "POST" });
-      const data = (await res.json()) as { url?: string };
-      if (data.url) window.location.href = data.url;
-    } catch {
-      setError("Failed to start checkout");
-    } finally {
-      setIsUpgrading(false);
+  // ── Score panel handlers ──
+  const stopScoreProgress = useCallback(() => {
+    if (scoreProgressRef.current) {
+      clearInterval(scoreProgressRef.current);
+      scoreProgressRef.current = null;
     }
   }, []);
+
+  const handleScore = useCallback(async () => {
+    if (!placeholders || !jobDescriptionRef.current) return;
+
+    // Need job analysis keywords to anchor scoring
+    if (!jobAnalysis?.skills?.length) {
+      toast.error("Wait for job analysis to complete first");
+      return;
+    }
+
+    if (scoreResult && !isScoring) {
+      // Already have results — just show the panel
+      setShowScorePanel(true);
+      return;
+    }
+
+    setIsScoring(true);
+    setShowScorePanel(true);
+    setScoreResult(null);
+    setAcceptedFixIds(new Set());
+    setSkippedFixIds(new Set());
+    setStaleFixIds(new Set());
+
+    // Fake progress
+    let p = 0;
+    setScoreProgress(0);
+    stopScoreProgress();
+    scoreProgressRef.current = setInterval(() => {
+      p += p < 50 ? 6 : p < 80 ? 3 : 0.5;
+      p = Math.min(p, 95);
+      setScoreProgress(Math.round(p));
+    }, 200);
+
+    try {
+      const res = await fetch("/api/analyze-resume", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placeholders,
+          jobDescription: jobDescriptionRef.current,
+          requiredKeywords: jobAnalysis.skills,
+        }),
+      });
+
+      if (!res.ok) throw new Error("Analysis failed");
+
+      const data = (await res.json()) as ScoreResult;
+      setScoreProgress(100);
+      setScoreResult(data);
+
+      // Cache in sessionStorage
+      sessionStorage.setItem(
+        "resume_score_cache",
+        JSON.stringify({ result: data }),
+      );
+    } catch {
+      toast.error("Failed to analyze resume");
+      setShowScorePanel(false);
+    } finally {
+      stopScoreProgress();
+      setIsScoring(false);
+    }
+  }, [placeholders, scoreResult, isScoring, stopScoreProgress, jobAnalysis]);
+
+  const handleReanalyze = useCallback(() => {
+    // Force re-fetch by clearing cached result
+    setScoreResult(null);
+    sessionStorage.removeItem("resume_score_cache");
+    if (!placeholders || !jobDescriptionRef.current || !jobAnalysis?.skills?.length) return;
+
+    setIsScoring(true);
+    setAcceptedFixIds(new Set());
+    setSkippedFixIds(new Set());
+    setStaleFixIds(new Set());
+
+    let p = 0;
+    setScoreProgress(0);
+    stopScoreProgress();
+    scoreProgressRef.current = setInterval(() => {
+      p += p < 50 ? 6 : p < 80 ? 3 : 0.5;
+      p = Math.min(p, 95);
+      setScoreProgress(Math.round(p));
+    }, 200);
+
+    fetch("/api/analyze-resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        placeholders,
+        jobDescription: jobDescriptionRef.current,
+        requiredKeywords: jobAnalysis.skills,
+      }),
+    })
+      .then((res) => {
+        if (!res.ok) throw new Error("Analysis failed");
+        return res.json();
+      })
+      .then((data: ScoreResult) => {
+        setScoreProgress(100);
+        setScoreResult(data);
+        sessionStorage.setItem(
+          "resume_score_cache",
+          JSON.stringify({ result: data }),
+        );
+      })
+      .catch(() => {
+        toast.error("Failed to analyze resume");
+      })
+      .finally(() => {
+        stopScoreProgress();
+        setIsScoring(false);
+      });
+  }, [placeholders, stopScoreProgress, jobAnalysis]);
+
+  const handleAcceptFix = useCallback(
+    (fix: KeywordFix) => {
+      if (!placeholders) return;
+
+      const sectionText = placeholders[fix.section];
+      if (!sectionText) return;
+
+      // Verify snippet still exists
+      if (!sectionText.includes(fix.currentSnippet)) {
+        setStaleFixIds((prev) => new Set(prev).add(fix.id));
+        return;
+      }
+
+      // Surgical replace
+      const updated = sectionText.replace(fix.currentSnippet, fix.fixedSnippet);
+      pushPlaceholders({ ...placeholders, [fix.section]: updated });
+      setAcceptedFixIds((prev) => new Set(prev).add(fix.id));
+
+      // Check if other pending fixes in the same section are now stale
+      if (scoreResult) {
+        const newStale = new Set(staleFixIds);
+        for (const other of scoreResult.fixes) {
+          if (
+            other.id !== fix.id &&
+            other.section === fix.section &&
+            !acceptedFixIds.has(other.id) &&
+            !skippedFixIds.has(other.id)
+          ) {
+            // Re-check against the updated text
+            if (!updated.includes(other.currentSnippet)) {
+              newStale.add(other.id);
+            }
+          }
+        }
+        setStaleFixIds(newStale);
+      }
+    },
+    [placeholders, pushPlaceholders, scoreResult, acceptedFixIds, skippedFixIds, staleFixIds],
+  );
+
+  const handleAcceptAllFixes = useCallback(() => {
+    if (!placeholders || !scoreResult) return;
+
+    const newAccepted = new Set(acceptedFixIds);
+    const newStale = new Set(staleFixIds);
+    const updatedPlaceholders = { ...placeholders };
+
+    // Process fixes section by section, in order
+    for (const fix of scoreResult.fixes) {
+      if (newAccepted.has(fix.id) || skippedFixIds.has(fix.id) || newStale.has(fix.id)) continue;
+
+      const sectionText = updatedPlaceholders[fix.section];
+      if (!sectionText || !sectionText.includes(fix.currentSnippet)) {
+        newStale.add(fix.id);
+        continue;
+      }
+
+      updatedPlaceholders[fix.section] = sectionText.replace(
+        fix.currentSnippet,
+        fix.fixedSnippet,
+      );
+      newAccepted.add(fix.id);
+
+      // Check remaining fixes in same section for staleness
+      for (const other of scoreResult.fixes) {
+        if (
+          other.id !== fix.id &&
+          other.section === fix.section &&
+          !newAccepted.has(other.id) &&
+          !skippedFixIds.has(other.id) &&
+          !newStale.has(other.id)
+        ) {
+          if (!updatedPlaceholders[fix.section].includes(other.currentSnippet)) {
+            newStale.add(other.id);
+          }
+        }
+      }
+    }
+
+    pushPlaceholders(updatedPlaceholders);
+    setAcceptedFixIds(newAccepted);
+    setStaleFixIds(newStale);
+  }, [placeholders, scoreResult, acceptedFixIds, skippedFixIds, staleFixIds, pushPlaceholders]);
+
+  // Invalidate score cache when resume is regenerated
+  const invalidateScore = useCallback(() => {
+    setScoreResult(null);
+    setShowScorePanel(false);
+    setAcceptedFixIds(new Set());
+    setSkippedFixIds(new Set());
+    setStaleFixIds(new Set());
+    sessionStorage.removeItem("resume_score_cache");
+  }, []);
+
+  // ── Add missing skill to profile ──
+  const [addedSkills, setAddedSkills] = useState<Set<string>>(new Set());
+
+  const handleAddSkill = useCallback(
+    async (skill: string) => {
+      // Add to local profile state
+      const existingSkills = flattenSkills(userProfile.skills);
+      if (existingSkills.some((s) => s.toLowerCase() === skill.toLowerCase())) {
+        toast.info(`"${skill}" is already in your skills`);
+        return;
+      }
+
+      // Categorize and merge
+      const newCategory = categorizeSkills([skill]);
+      const updatedSkills = { ...userProfile.skills };
+      for (const [cat, items] of Object.entries(newCategory)) {
+        if (!updatedSkills[cat]) updatedSkills[cat] = [];
+        updatedSkills[cat] = [...updatedSkills[cat], ...items];
+      }
+
+      const updatedProfile = { ...userProfile, skills: updatedSkills };
+      setUserProfile(updatedProfile);
+      setAddedSkills((prev) => new Set(prev).add(skill.toLowerCase()));
+
+      // Also update the job analysis locally — move skill from missing to matched
+      if (jobAnalysis) {
+        setJobAnalysis({
+          ...jobAnalysis,
+          matchedSkills: [...jobAnalysis.matchedSkills, skill],
+          missingSkills: jobAnalysis.missingSkills.filter(
+            (s) => s.toLowerCase() !== skill.toLowerCase(),
+          ),
+          matchScore: Math.round(
+            ((jobAnalysis.matchedSkills.length + 1) / jobAnalysis.skills.length) * 100,
+          ),
+        });
+      }
+
+      // Persist to DB
+      try {
+        await fetch("/api/profile", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ skills: updatedSkills }),
+        });
+        toast.success(`Added "${skill}" to your skills`);
+      } catch {
+        toast.error("Failed to save skill");
+      }
+
+      // Invalidate score cache since profile changed
+      invalidateScore();
+    },
+    [userProfile, jobAnalysis, invalidateScore],
+  );
 
   // ── Auto-analyze job description ──
   const analyzeJob = useCallback(
@@ -394,6 +716,7 @@ export default function Page() {
         pushPlaceholders(finalPlaceholders);
         setIsStreaming(false);
         incrementUsage();
+        invalidateScore();
 
         // Set resume title using AI-extracted company name
         const companyName = finalPlaceholders._COMPANY_NAME;
@@ -421,6 +744,7 @@ export default function Page() {
       userProfile,
       pushPlaceholders,
       setPlaceholders,
+      invalidateScore,
     ],
   );
 
@@ -456,6 +780,67 @@ export default function Page() {
     };
   }, [resumeTitle]);
 
+  // Compute which job keywords actually appear in the resume text (client-side, deterministic)
+  // Splits compound keywords like "JavaScript & TypeScript" into atomic terms for accurate matching
+  const resumeMatchedKeywords = useMemo(() => {
+    if (!jobAnalysis?.skills?.length || !placeholders) return undefined;
+
+    const resumeText = Object.values(placeholders).join(" ").toLowerCase();
+
+    // Split compound keywords into atomic terms
+    // "CSS frameworks & component libraries (Tailwind, Material UI, styled-components, CSS Modules)"
+    // → ["CSS frameworks", "component libraries", "Tailwind", "Material UI", "styled-components", "CSS Modules"]
+    const atomize = (kw: string): string[] => {
+      // Extract parenthetical list items first
+      const parenMatch = kw.match(/\(([^)]+)\)/);
+      const parenItems = parenMatch
+        ? parenMatch[1].split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+
+      // Get the part before parentheses
+      const mainPart = kw.replace(/\s*\([^)]*\)\s*/g, "").trim();
+
+      // Split main part by & / and / ,
+      const mainItems = mainPart
+        .split(/\s*[&,/]\s*|\s+and\s+/i)
+        .map((s) => s.trim())
+        .filter((s) => s.length >= 2);
+
+      const all = [...mainItems, ...parenItems].filter((s) => s.length >= 2);
+      return all.length > 0 ? all : [kw];
+    };
+
+    // Check if an atomic term appears in the resume text with word boundaries
+    const foundInResume = (term: string): boolean => {
+      const termLower = term.toLowerCase();
+      let searchFrom = 0;
+      while (searchFrom < resumeText.length) {
+        const idx = resumeText.indexOf(termLower, searchFrom);
+        if (idx === -1) return false;
+
+        const before = idx > 0 ? resumeText[idx - 1] : " ";
+        const after = idx + termLower.length < resumeText.length ? resumeText[idx + termLower.length] : " ";
+        const boundary = /[\s,;.:()\-/&|!#'"[\]{}+]/;
+
+        if (boundary.test(before) && boundary.test(after)) return true;
+        searchFrom = idx + 1;
+      }
+      return false;
+    };
+
+    // Collect all atomic terms that match
+    const matched = new Set<string>();
+    for (const kw of jobAnalysis.skills) {
+      for (const term of atomize(kw)) {
+        if (foundInResume(term)) {
+          matched.add(term);
+        }
+      }
+    }
+
+    return matched.size > 0 ? [...matched] : undefined;
+  }, [jobAnalysis?.skills, placeholders]);
+
   return (
     <>
       <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
@@ -477,6 +862,7 @@ export default function Page() {
                   jobDescriptionRef.current = "";
                   editorResetRef.current?.();
                   sessionStorage.removeItem("resume_cache");
+                  invalidateScore();
                 }}
               >
                 Clear
@@ -490,18 +876,35 @@ export default function Page() {
               <UserMenu
                 user={user}
                 usageCount={usageCount}
-                maxAttempts={MAX_ATTEMPTS}
+                maxAttempts={maxAttempts}
                 isSubscribed={isSubscribed}
                 cancelAt={cancelAt}
+                resetsAt={resetsAt}
               />
             )}
             <ThemeToggle />
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col items-start gap-8 lg:flex-row">
+        <div className="flex flex-1 flex-col items-start gap-8 xl:flex-row">
           {/* Left panel */}
-          <div className="flex w-full flex-col gap-6 lg:gap-8">
+          <div className="flex w-full flex-col gap-6 xl:gap-8">
+            {showScorePanel ? (
+              <ScorePanel
+                result={scoreResult}
+                isLoading={isScoring}
+                progress={scoreProgress}
+                acceptedIds={acceptedFixIds}
+                skippedIds={skippedFixIds}
+                staleIds={staleFixIds}
+                onAcceptFix={handleAcceptFix}
+                onSkipFix={(id) => setSkippedFixIds((prev) => new Set(prev).add(id))}
+                onAcceptAll={handleAcceptAllFixes}
+                onReanalyze={handleReanalyze}
+                onClose={() => setShowScorePanel(false)}
+              />
+            ) : (
+            <>
             <div className="h-fit w-full space-y-3">
               {/* Job Description — collapsible */}
               <div>
@@ -623,6 +1026,8 @@ export default function Page() {
                     analysisJobRef.current = "";
                     analyzeJob(jobDescriptionRef.current);
                   }}
+                  onAddSkill={handleAddSkill}
+                  addedSkills={addedSkills}
                 />
               )}
             </div>
@@ -632,27 +1037,17 @@ export default function Page() {
             {!authLoading && !user ? (
               <SignInButton />
             ) : (
+              <>
               <div className="flex flex-wrap items-center gap-3">
                 {/* Primary action */}
-                {!isSubscribed && attemptsLeft <= 0 ? (
-                  <Button
-                    size="lg"
-                    className="flex-1"
-                    onClick={handleUpgrade}
-                    disabled={isUpgrading}
-                  >
-                    {isUpgrading ? "Redirecting..." : "Upgrade to Pro — $5/mo"}
-                  </Button>
-                ) : (
-                  <Button
-                    size="lg"
-                    className="flex-1"
-                    onClick={() => handleTailor()}
-                    disabled={isLoading || authLoading || !usageLoaded}
-                  >
-                    {isLoading ? "Tailoring..." : "Tailor Resume"}
-                  </Button>
-                )}
+                <Button
+                  size="lg"
+                  className="flex-1"
+                  onClick={() => handleTailor()}
+                  disabled={isLoading || authLoading || !usageLoaded || (!isSubscribed && attemptsLeft <= 0)}
+                >
+                  {isLoading ? "Tailoring..." : "Tailor Resume"}
+                </Button>
 
                 {/* Resume controls */}
                 <TemplateSettingsDialog
@@ -679,35 +1074,15 @@ export default function Page() {
                   disabled={!user}
                 />
 
-                <div className="flex items-center gap-2">
-                  <span className="text-muted-foreground text-xs whitespace-nowrap">
-                    Pages
-                  </span>
-                  <div className="border-input flex items-center border">
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                      onClick={() => setTargetPages((p) => Math.max(1, p - 1))}
-                      disabled={targetPages <= 1}
-                      aria-label="Decrease pages"
-                    >
-                      −
-                    </button>
-                    <span className="w-6 text-center text-sm font-medium tabular-nums">
-                      {targetPages}
-                    </span>
-                    <button
-                      type="button"
-                      className="text-muted-foreground hover:text-foreground hover:bg-muted h-10 w-8 cursor-pointer text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40"
-                      onClick={() => setTargetPages((p) => Math.min(2, p + 1))}
-                      disabled={targetPages >= 2}
-                      aria-label="Increase pages"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
               </div>
+
+              {/* Limit reached banner */}
+              {!isSubscribed && attemptsLeft <= 0 && (
+                <LimitReachedBanner resetsAt={resetsAt} />
+              )}
+              </>
+            )}
+            </>
             )}
 
           </div>
@@ -727,20 +1102,26 @@ export default function Page() {
                   />
                   {user && (
                     <>
-                      <ResumeAnalyzerDialog
-                        placeholders={placeholders}
-                        jobDescription={jobDescriptionRef.current}
-                        disabled={!user}
-                        label="Score"
-                        onAcceptSuggestion={(section, newText) => {
-                          if (placeholders) {
-                            pushPlaceholders({
-                              ...placeholders,
-                              [section]: newText,
-                            });
-                          }
-                        }}
-                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="shrink-0 text-xs"
+                        disabled={!user || !placeholders || !jobDescriptionRef.current || !jobAnalysis?.skills?.length}
+                        onClick={handleScore}
+                      >
+                        {isScoring ? (
+                          <div className="border-primary mr-1.5 size-3 animate-spin rounded-full border-2 border-t-transparent" />
+                        ) : (
+                          <svg className="mr-1.5 size-3" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M12 3l1.912 5.813a2 2 0 0 0 1.275 1.275L21 12l-5.813 1.912a2 2 0 0 0-1.275 1.275L12 21l-1.912-5.813a2 2 0 0 0-1.275-1.275L3 12l5.813-1.912a2 2 0 0 0 1.275-1.275L12 3z" />
+                          </svg>
+                        )}
+                        {isScoring
+                          ? `${scoreProgress}%`
+                          : scoreResult
+                            ? `Score: ${scoreResult.score}`
+                            : "Score"}
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -805,6 +1186,8 @@ export default function Page() {
                 onDownloadPdf={handleDownloadPdf}
                 jobDescription={jobDescriptionRef.current}
                 templateSettings={templateSettings}
+                contactFields={userProfile.contact_fields}
+                highlightKeywords={resumeMatchedKeywords}
                 onPlaceholderChange={(key, value) =>
                   pushPlaceholders(
                     placeholders ? { ...placeholders, [key]: value } : null,
@@ -889,5 +1272,193 @@ function ModelSelector({
         </DropdownMenuGroup>
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+// ── Limit Reached Banner ─────────────────────────────────────────────
+
+function LimitReachedBanner({ resetsAt }: { resetsAt?: string }) {
+  const [showRequestForm, setShowRequestForm] = useState(false);
+  const [requestReason, setRequestReason] = useState("");
+  const [requestPending, setRequestPending] = useState(false);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+
+  const [showReferral, setShowReferral] = useState(false);
+  const [referralData, setReferralData] = useState<{
+    referralUrl: string;
+    completedCount: number;
+    bonusEarned: number;
+  } | null>(null);
+  const [referralLoading, setReferralLoading] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  // Check for pending request on mount
+  useEffect(() => {
+    fetch("/api/quota-request")
+      .then((res) => res.json())
+      .then((data: { hasPending?: boolean }) => {
+        setRequestPending(!!data.hasPending);
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleSubmitRequest = async () => {
+    setRequestSubmitting(true);
+    try {
+      const res = await fetch("/api/quota-request", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason: requestReason }),
+      });
+      if (res.ok) {
+        setRequestPending(true);
+        setShowRequestForm(false);
+        setRequestReason("");
+      }
+    } catch {
+      // silently fail
+    } finally {
+      setRequestSubmitting(false);
+    }
+  };
+
+  const handleShowReferral = async () => {
+    if (referralData) {
+      setShowReferral(!showReferral);
+      return;
+    }
+    setReferralLoading(true);
+    setShowReferral(true);
+    try {
+      const res = await fetch("/api/referral");
+      const data = await res.json();
+      setReferralData(data);
+    } catch {
+      // silently fail
+    } finally {
+      setReferralLoading(false);
+    }
+  };
+
+  const handleCopyReferral = async () => {
+    if (!referralData) return;
+    await navigator.clipboard.writeText(referralData.referralUrl);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const resetLabel = resetsAt
+    ? new Date(resetsAt).toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        timeZoneName: "short",
+      })
+    : "midnight UTC";
+
+  return (
+    <div className="bg-muted/50 border p-4 space-y-3">
+      <div>
+        <p className="text-sm font-medium">Daily limit reached</p>
+        <p className="text-muted-foreground text-xs">
+          Your free resumes reset at {resetLabel}. Need more?
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        {/* Request More */}
+        {requestPending ? (
+          <span className="text-muted-foreground text-xs">Request pending ✓</span>
+        ) : !showRequestForm ? (
+          <button
+            type="button"
+            className="text-primary cursor-pointer text-xs font-medium hover:underline"
+            onClick={() => setShowRequestForm(true)}
+          >
+            Request more
+          </button>
+        ) : null}
+
+        <span className="text-muted-foreground text-xs">or</span>
+
+        {/* Invite a Friend */}
+        <button
+          type="button"
+          className="text-primary cursor-pointer text-xs font-medium hover:underline"
+          onClick={handleShowReferral}
+        >
+          Invite a friend (+5/day)
+        </button>
+      </div>
+
+      {/* Request form */}
+      {showRequestForm && (
+        <div className="space-y-2">
+          <textarea
+            className="border-input bg-background w-full border px-3 py-2 text-sm outline-none focus:ring-1 focus:ring-primary"
+            placeholder="Why do you need more? (optional)"
+            rows={2}
+            value={requestReason}
+            onChange={(e) => setRequestReason(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              onClick={handleSubmitRequest}
+              disabled={requestSubmitting}
+            >
+              {requestSubmitting ? "Sending..." : "Send Request"}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => {
+                setShowRequestForm(false);
+                setRequestReason("");
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Referral section */}
+      {showReferral && (
+        <div className="space-y-2">
+          {referralLoading ? (
+            <div className="flex items-center gap-1.5">
+              <div className="border-primary size-3 animate-spin rounded-full border-2 border-t-transparent" />
+              <span className="text-muted-foreground text-xs">Loading...</span>
+            </div>
+          ) : referralData ? (
+            <>
+              <p className="text-muted-foreground text-xs">
+                Share this link. When someone signs up, you get +5 resumes/day.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={referralData.referralUrl}
+                  className="border-input bg-background flex-1 border px-3 py-1.5 text-xs"
+                />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={handleCopyReferral}
+                >
+                  {copied ? "Copied!" : "Copy"}
+                </Button>
+              </div>
+              {referralData.completedCount > 0 && (
+                <p className="text-xs font-medium text-green-600">
+                  {referralData.completedCount} referral{referralData.completedCount !== 1 ? "s" : ""} · +{referralData.bonusEarned}/day earned
+                </p>
+              )}
+            </>
+          ) : null}
+        </div>
+      )}
+    </div>
   );
 }

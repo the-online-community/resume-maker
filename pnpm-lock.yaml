@@ -47,6 +47,9 @@ importers:
       idb:
         specifier: ^8.0.3
         version: 8.0.3
+      nanoid:
+        specifier: ^5.1.7
+        version: 5.1.7
       next:
         specifier: 16.1.6
         version: 16.1.6(@babel/core@7.29.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -3171,8 +3174,8 @@ packages:
     engines: {node: ^10 || ^12 || ^13.7 || ^14 || >=15.0.1}
     hasBin: true
 
-  nanoid@5.1.6:
-    resolution: {integrity: sha512-c7+7RQ+dMB5dPwwCp4ee1/iV/q2P6aK1mTZcfr1BTuVlyW9hJYiMPybJCcnBlQtuSmTIWNeazm/zqNoZSSElBg==}
+  nanoid@5.1.7:
+    resolution: {integrity: sha512-ua3NDgISf6jdwezAheMOk4mbE1LXjm1DfMUDMuJf4AqxLFK3ccGpgWizwa5YV7Yz9EpXwEaWoRXSb/BnV0t5dQ==}
     engines: {node: ^18 || >=20}
     hasBin: true
 
@@ -4864,7 +4867,7 @@ snapshots:
       jotai-optics: 0.4.0(jotai@2.8.4(@types/react@19.2.14)(react@19.2.3))(optics-ts@2.4.1)
       jotai-x: 2.3.3(@types/react@19.2.14)(jotai@2.8.4(@types/react@19.2.14)(react@19.2.3))(react@19.2.3)
       lodash: 4.17.23
-      nanoid: 5.1.6
+      nanoid: 5.1.7
       optics-ts: 2.4.1
       react: 19.2.3
       react-compiler-runtime: 1.0.0(react@19.2.3)
@@ -7436,7 +7439,7 @@ snapshots:
 
   nanoid@3.3.11: {}
 
-  nanoid@5.1.6: {}
+  nanoid@5.1.7: {}
 
   napi-postinstall@0.3.4: {}
 

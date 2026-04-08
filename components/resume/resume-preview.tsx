@@ -11,6 +11,7 @@ import {
 import { ResumeContent } from "@/components/resume/resume-content";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { ContactField } from "@/lib/profile";
 import type { TemplateSettings } from "@/lib/resume/templates";
 
 interface ResumePreviewProps {
@@ -22,6 +23,8 @@ interface ResumePreviewProps {
   onBatchPlaceholderChange?: (updates: Record<string, string>) => void;
   jobDescription?: string;
   templateSettings?: TemplateSettings;
+  contactFields?: ContactField[];
+  highlightKeywords?: string[];
 }
 
 const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
@@ -35,6 +38,8 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       onBatchPlaceholderChange,
       jobDescription,
       templateSettings,
+      contactFields,
+      highlightKeywords,
     },
     ref,
   ) {
@@ -42,6 +47,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const [pageCount, setPageCount] = useState(1);
     const [scale, setScale] = useState(1);
+    const [breakPadding, setBreakPadding] = useState<number[]>([]);
 
     // Merge the forwarded ref with our measurement ref
     const setMeasureRef = useCallback(
@@ -57,20 +63,14 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       [ref],
     );
 
-    // Measure content height → page count
-    // No padding on measurement div, so scrollHeight = pure content height
-    useEffect(() => {
-      const el = measureRef.current;
-      if (!el || !placeholders) return;
+    // Callbacks from the measurement ResumeContent's page-break logic
+    const handlePageCount = useCallback((count: number) => {
+      setPageCount(count);
+    }, []);
 
-      const observer = new ResizeObserver(() => {
-        const pages = Math.max(1, Math.ceil(el.scrollHeight / PAGE_HEIGHT));
-        setPageCount(pages);
-      });
-
-      observer.observe(el);
-      return () => observer.disconnect();
-    }, [placeholders]);
+    const handleBreakPadding = useCallback((padding: number[]) => {
+      setBreakPadding(padding);
+    }, []);
 
     // Responsive scaling — fit the page frames into the container
     useEffect(() => {
@@ -80,7 +80,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       const observer = new ResizeObserver(([entry]) => {
         const available = entry.contentRect.width;
         const base = Math.min(1, available / FRAME_WIDTH);
-        // Scale down a bit more on small screens for breathing room
         setScale(available < 640 ? base * 0.92 : base);
       });
 
@@ -141,12 +140,14 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
     }
 
     // Total visual height of all pages (for negative margin calculation after scale)
+    // Each page frame = PAGE_HEIGHT + 2*padding, plus 24px gap between pages
+    const pageFrameHeight = PAGE_HEIGHT + PAGE_PADDING * 2;
     const totalVisualHeight =
-      pageCount * (PAGE_HEIGHT + PAGE_PADDING * 2) + (pageCount - 1) * 24;
+      pageCount * pageFrameHeight + (pageCount - 1) * 24;
 
     return (
       <div className="flex min-w-0 flex-col gap-4">
-        {/* Hidden measurement div — NO padding, matches print content width */}
+        {/* Hidden measurement div — with page-break padding applied by ResumeContent */}
         <div
           ref={setMeasureRef}
           className="resume-page absolute -left-[9999px]"
@@ -157,6 +158,10 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
             placeholders={placeholders}
             isStreaming={isStreaming}
             templateSettings={templateSettings}
+            contactFields={contactFields}
+            pageHeight={PAGE_HEIGHT}
+            onPageCount={handlePageCount}
+            onBreakPadding={handleBreakPadding}
           />
         </div>
 
@@ -167,7 +172,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
               transform: `scale(${scale})`,
               transformOrigin: "top left",
               width: FRAME_WIDTH,
-              // Correct the space after scaling (transform doesn't affect flow)
               marginBottom: -(1 - scale) * totalVisualHeight,
               marginRight: -(1 - scale) * FRAME_WIDTH,
             }}
@@ -184,7 +188,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                   }}
                 >
                   {/* Page number label — top right */}
-                  {pageCount > 0 && (
+                  {pageCount > 1 && (
                     <span className="text-muted-foreground pointer-events-none absolute top-2 right-3 z-10 bg-white px-1 text-[10px] font-medium">
                       {i + 1} / {pageCount}
                     </span>
@@ -195,8 +199,7 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                     className="overflow-hidden"
                     style={{
                       width: CONTENT_WIDTH,
-                      height: isLast ? "auto" : PAGE_HEIGHT,
-                      maxHeight: isLast ? undefined : PAGE_HEIGHT,
+                      height: PAGE_HEIGHT,
                     }}
                   >
                     {/* Content slice — offset by page index */}
@@ -207,10 +210,14 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                       <ResumeContent
                         placeholders={placeholders}
                         isStreaming={isStreaming}
-                        onEdit={i === 0 ? onPlaceholderChange : undefined}
-                        onBatchEdit={i === 0 ? onBatchPlaceholderChange : undefined}
-                        jobDescription={i === 0 ? jobDescription : undefined}
+                        onEdit={onPlaceholderChange}
+                        onBatchEdit={onBatchPlaceholderChange}
+                        jobDescription={jobDescription}
                         templateSettings={templateSettings}
+                        contactFields={contactFields}
+                        highlightKeywords={highlightKeywords}
+                        pageHeight={PAGE_HEIGHT}
+                        breakPadding={breakPadding}
                       />
                     </div>
                   </div>
@@ -220,19 +227,12 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
           </div>
         </div>
 
-        {/* Tip + actions */}
+        {/* Actions */}
         {!isStreaming && (
-          <div className="flex flex-col gap-3">
-            {pageCount > 1 && (
-              <p className="text-destructive/70 text-center text-xs">
-                Tip: Keep it to 1 page for best results
-              </p>
-            )}
-            <div className="flex gap-3">
-              <Button size="lg" className="flex-1" onClick={onDownloadPdf}>
-                Download PDF
-              </Button>
-            </div>
+          <div className="flex gap-3">
+            <Button size="lg" className="flex-1" onClick={onDownloadPdf}>
+              Download PDF
+            </Button>
           </div>
         )}
       </div>

@@ -45,7 +45,7 @@ export default function TextEditor({
   const urlDetectedRef = useRef(false);
 
   // LinkedIn URL pattern
-  const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/jobs\/(?:view|search)\S*/i;
+  const LINKEDIN_URL_RE = /https?:\/\/(?:www\.)?linkedin\.com\/jobs\/\S*/i;
 
   // ResizeObserver reliably detects overflow after DOM layout updates
   useEffect(() => {

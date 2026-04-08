@@ -6,6 +6,7 @@ import { countSkills, isProfileEmpty, type UserProfile } from "@/lib/profile";
 interface ProfileMeTabProps {
   draft: UserProfile;
   onTabChange: (tab: string) => void;
+  onImportClick?: () => void;
 }
 
 function SectionHeader({
@@ -31,7 +32,7 @@ function SectionHeader({
   );
 }
 
-export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
+export function ProfileMeTab({ draft, onTabChange, onImportClick }: ProfileMeTabProps) {
   if (isProfileEmpty(draft)) {
     return (
       <div className="space-y-4 py-8 text-center">
@@ -54,7 +55,7 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
           <button
             type="button"
             className="text-primary cursor-pointer text-sm font-medium hover:underline"
-            onClick={() => onTabChange("import")}
+            onClick={() => onImportClick?.()}
           >
             Import from resume
           </button>
@@ -63,14 +64,14 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
     );
   }
 
-  const hasContact =
-    draft.full_name || draft.email || draft.phone || draft.location;
-  const hasLinks = draft.linkedin || draft.github || draft.website;
+  const filledFields = (draft.contact_fields ?? []).filter((f) => f.value.trim());
+  const nameField = filledFields.find((f) => f.id === "full_name" || f.label.toLowerCase() === "full name");
+  const otherFields = filledFields.filter((f) => f !== nameField);
 
   return (
     <div className="space-y-5">
       {/* Contact */}
-      {(hasContact || hasLinks) && (
+      {filledFields.length > 0 && (
         <div className="space-y-2">
           <SectionHeader
             title="Contact"
@@ -78,21 +79,19 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
             onTabChange={onTabChange}
           />
           <div className="text-sm">
-            {draft.full_name && (
-              <p className="font-medium">{draft.full_name}</p>
+            {nameField && (
+              <p className="font-medium">{nameField.value}</p>
             )}
             <div className="text-muted-foreground flex flex-wrap gap-x-3 text-xs">
-              {draft.email && <span>{draft.email}</span>}
-              {draft.phone && <span>{draft.phone}</span>}
-              {draft.location && <span>{draft.location}</span>}
+              {otherFields.map((f) => (
+                <span key={f.id}>
+                  {f.value}
+                  {!f.visible && (
+                    <span className="text-muted-foreground/50 ml-0.5">(hidden)</span>
+                  )}
+                </span>
+              ))}
             </div>
-            {hasLinks && (
-              <div className="text-muted-foreground mt-1 flex flex-wrap gap-x-3 text-xs">
-                {draft.linkedin && <span>{draft.linkedin}</span>}
-                {draft.github && <span>{draft.github}</span>}
-                {draft.website && <span>{draft.website}</span>}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -240,6 +239,35 @@ export function ProfileMeTab({ draft, onTabChange }: ProfileMeTabProps) {
                       <li key={j}>{h}</li>
                     ))}
                   </ul>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Certifications */}
+      {(draft.certifications ?? []).length > 0 && (
+        <div className="space-y-2">
+          <SectionHeader
+            title="Certifications"
+            tab="certifications"
+            onTabChange={onTabChange}
+          />
+          <div className="space-y-1">
+            {(draft.certifications ?? []).map((cert, i) => (
+              <div key={i} className="text-sm">
+                <p className="font-medium">
+                  {cert.name}
+                  {cert.issuer && (
+                    <span className="text-muted-foreground font-normal">
+                      {" "}
+                      — {cert.issuer}
+                    </span>
+                  )}
+                </p>
+                {cert.date && (
+                  <p className="text-muted-foreground text-xs">{cert.date}</p>
                 )}
               </div>
             ))}

@@ -28,29 +28,38 @@ function buildProfileContext(
   profile: UserProfile,
   templateSettings?: TemplateSettings,
 ): string {
-  const enabledFields = new Set(
-    templateSettings?.headerFields ?? [
-      "EMAIL", "PHONE", "LOCATION", "LINKEDIN", "GITHUB", "WEBSITE",
-    ],
-  );
-
   const lines: string[] = [
     "USER PROFILE — always use these exact values; never substitute placeholders:",
   ];
 
-  if (profile.full_name) lines.push(`• Full Name: ${profile.full_name}`);
-  if (profile.email && enabledFields.has("EMAIL"))
-    lines.push(`• Email: ${profile.email}`);
-  if (profile.phone && enabledFields.has("PHONE"))
-    lines.push(`• Phone: ${profile.phone}`);
-  if (profile.location && enabledFields.has("LOCATION"))
-    lines.push(`• Location: ${profile.location}`);
-  if (profile.linkedin && enabledFields.has("LINKEDIN"))
-    lines.push(`• LinkedIn: ${profile.linkedin}`);
-  if (profile.github && enabledFields.has("GITHUB"))
-    lines.push(`• GitHub: ${profile.github}`);
-  if (profile.website && enabledFields.has("WEBSITE"))
-    lines.push(`• Website: ${profile.website}`);
+  // Dynamic contact fields (new format)
+  if (profile.contact_fields?.length) {
+    for (const cf of profile.contact_fields) {
+      if (cf.value && cf.visible) {
+        lines.push(`• ${cf.label}: ${cf.value}`);
+      }
+    }
+  } else {
+    // Legacy fallback: fixed fields
+    const enabledFields = new Set(
+      templateSettings?.headerFields ?? [
+        "EMAIL", "PHONE", "LOCATION", "LINKEDIN", "GITHUB", "WEBSITE",
+      ],
+    );
+    if (profile.full_name) lines.push(`• Full Name: ${profile.full_name}`);
+    if (profile.email && enabledFields.has("EMAIL"))
+      lines.push(`• Email: ${profile.email}`);
+    if (profile.phone && enabledFields.has("PHONE"))
+      lines.push(`• Phone: ${profile.phone}`);
+    if (profile.location && enabledFields.has("LOCATION"))
+      lines.push(`• Location: ${profile.location}`);
+    if (profile.linkedin && enabledFields.has("LINKEDIN"))
+      lines.push(`• LinkedIn: ${profile.linkedin}`);
+    if (profile.github && enabledFields.has("GITHUB"))
+      lines.push(`• GitHub: ${profile.github}`);
+    if (profile.website && enabledFields.has("WEBSITE"))
+      lines.push(`• Website: ${profile.website}`);
+  }
   const skillsMap = profile.skills ?? {};
   const skillCategories = Object.keys(skillsMap);
   if (skillCategories.length) {
@@ -119,6 +128,16 @@ function buildProfileContext(
       if (p.highlights?.length)
         parts.push(`  Key highlights: ${p.highlights.join("; ")}`);
       lines.push(parts.join("\n"));
+    }
+  }
+
+  if (profile.certifications?.length) {
+    lines.push("\nCertifications:");
+    for (const c of profile.certifications) {
+      let line = `• ${c.name}`;
+      if (c.issuer) line += ` — ${c.issuer}`;
+      if (c.date) line += ` (${c.date})`;
+      lines.push(line);
     }
   }
 

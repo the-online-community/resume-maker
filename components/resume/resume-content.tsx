@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { AiSectionEditor } from "@/components/resume/ai-section-editor";
 import { LinkEditPopover, toUrl } from "@/components/resume/link-edit-popover";
@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RESUME_CSS } from "@/lib/resume/resume-styles";
+import type { ContactField } from "@/lib/profile";
 import {
   DEFAULT_SETTINGS,
   type TemplateSettings,
@@ -25,6 +26,17 @@ interface ResumeContentProps {
   onBatchEdit?: (updates: Record<string, string>) => void;
   jobDescription?: string;
   templateSettings?: TemplateSettings;
+  contactFields?: ContactField[];
+  highlightKeywords?: string[];
+  /** When set, sections are padded to avoid splitting across page boundaries.
+   *  Only the measurement instance should set this + onBreakPadding.
+   *  Visual instances receive the computed breakPadding instead. */
+  pageHeight?: number;
+  onPageCount?: (count: number) => void;
+  /** Callback with computed padding per section index */
+  onBreakPadding?: (padding: number[]) => void;
+  /** Pre-computed padding values per section index (for visual instances) */
+  breakPadding?: number[];
 }
 
 const BULLET_CHARS: Record<TemplateSettings["bulletStyle"], string> = {
@@ -263,6 +275,12 @@ export function ResumeContent({
   onBatchEdit,
   jobDescription,
   templateSettings,
+  contactFields,
+  highlightKeywords,
+  pageHeight,
+  onPageCount,
+  onBreakPadding,
+  breakPadding,
 }: ResumeContentProps) {
   const settings = templateSettings || DEFAULT_SETTINGS;
   const editable = !isStreaming && !!onEdit;
@@ -383,10 +401,165 @@ export function ResumeContent({
     );
   }
 
+  // ── Page-break avoidance ──
+  const resumeRootRef = useRef<HTMLDivElement>(null);
+
+  // Measurement mode: compute break padding and report it upward
+  useEffect(() => {
+    const root = resumeRootRef.current;
+    if (!root || !pageHeight || !onBreakPadding) return;
+
+    const frameId = requestAnimationFrame(() => {
+      const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
+
+      // 1. Clear previous padding
+      for (const s of sections) {
+        s.style.paddingTop = "";
+      }
+
+      // 2. Read ALL positions at once (before any mutations)
+      const measurements: { el: HTMLElement; top: number; height: number }[] = [];
+      for (const section of sections) {
+        measurements.push({
+          el: section,
+          top: section.offsetTop,
+          height: section.offsetHeight,
+        });
+      }
+
+      // 3. Compute and apply padding
+      const paddings: number[] = [];
+      let totalShift = 0;
+      for (const { el, top, height } of measurements) {
+        const adjustedTop = top + totalShift;
+        const pageEnd = (Math.floor(adjustedTop / pageHeight) + 1) * pageHeight;
+        const remaining = pageEnd - adjustedTop;
+
+        if (height > remaining && remaining < pageHeight - 1) {
+          paddings.push(remaining);
+          el.style.paddingTop = `${remaining}px`;
+          totalShift += remaining;
+        } else {
+          paddings.push(0);
+        }
+      }
+
+      // 4. Report padding and page count
+      onBreakPadding(paddings);
+      if (onPageCount) {
+        onPageCount(Math.max(1, Math.ceil(root.scrollHeight / pageHeight)));
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [placeholders, pageHeight, onBreakPadding, onPageCount]);
+
+  // Visual mode: apply pre-computed break padding
+  useEffect(() => {
+    const root = resumeRootRef.current;
+    if (!root || !breakPadding?.length) return;
+
+    const frameId = requestAnimationFrame(() => {
+      const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
+      for (let i = 0; i < sections.length && i < breakPadding.length; i++) {
+        sections[i].style.paddingTop = breakPadding[i] > 0 ? `${breakPadding[i]}px` : "";
+      }
+    });
+
+    return () => cancelAnimationFrame(frameId);
+  }, [breakPadding, placeholders]);
+
+  // ── Keyword highlighting ──
+
+  useEffect(() => {
+    const root = resumeRootRef.current;
+    if (!root || !highlightKeywords?.length) return;
+
+    // Build a single regex matching all keywords (case-insensitive, whole-ish word)
+    const escaped = highlightKeywords
+      .filter((k) => k.length >= 2)
+      .map((k) => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+    if (!escaped.length) return;
+
+    const re = new RegExp(`\\b(${escaped.join("|")})\\b`, "gi");
+
+    // Walk all text nodes inside resume-section elements
+    const sections = root.querySelectorAll(".resume-section");
+    const marks: HTMLElement[] = [];
+
+    for (const section of sections) {
+      const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
+      const textNodes: Text[] = [];
+      let node: Text | null;
+      while ((node = walker.nextNode() as Text | null)) {
+        textNodes.push(node);
+      }
+
+      for (const textNode of textNodes) {
+        const text = textNode.textContent || "";
+        if (!re.test(text)) continue;
+        re.lastIndex = 0;
+
+        // Split text around matches and create mark elements
+        const frag = document.createDocumentFragment();
+        let lastIndex = 0;
+        let match: RegExpExecArray | null;
+
+        while ((match = re.exec(text)) !== null) {
+          // Text before match
+          if (match.index > lastIndex) {
+            frag.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+          }
+          // Highlighted match
+          const mark = document.createElement("mark");
+          mark.className = "resume-keyword-highlight";
+          mark.textContent = match[0];
+          frag.appendChild(mark);
+          marks.push(mark);
+          lastIndex = re.lastIndex;
+        }
+        // Text after last match
+        if (lastIndex < text.length) {
+          frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+        }
+
+        textNode.parentNode?.replaceChild(frag, textNode);
+      }
+    }
+
+    // Cleanup: remove marks on next render cycle
+    return () => {
+      for (const mark of marks) {
+        const parent = mark.parentNode;
+        if (parent) {
+          parent.replaceChild(document.createTextNode(mark.textContent || ""), mark);
+          parent.normalize(); // merge adjacent text nodes
+        }
+      }
+    };
+  }, [highlightKeywords, placeholders]);
+
   return (
     <>
       {/* Shared resume styles */}
       <style>{RESUME_CSS}</style>
+      {highlightKeywords?.length ? (
+        <style>{`
+          .resume-keyword-highlight {
+            background: rgba(250, 204, 21, 0.25);
+            color: inherit;
+            padding: 0;
+            border-bottom: 1.5px solid rgb(250, 204, 21);
+          }
+          @media (prefers-color-scheme: dark) {
+            .resume-keyword-highlight {
+              background: rgba(250, 204, 21, 0.15);
+              border-bottom-color: rgba(250, 204, 21, 0.5);
+            }
+          }
+        `}</style>
+      ) : null}
+      <div ref={resumeRootRef}>
 
       {/* Header */}
       <div className="resume-header">
@@ -410,63 +583,106 @@ export function ResumeContent({
         )}
         <div className="resume-contact">
          <div className="resume-contact-inner">
-          {settings.headerFields.map((fieldKey) =>
-            LINK_FIELDS.has(fieldKey) ? (
-              <HeaderLink
-                key={fieldKey}
-                fieldKey={fieldKey}
-                placeholders={placeholders}
-                editable={editable}
-                onSave={handleLinkSave}
-              />
-            ) : (
-              <HeaderText
-                key={fieldKey}
-                fieldKey={fieldKey}
-                placeholders={placeholders}
-                editable={editable}
-                onBlur={handleBlur}
-              />
-            ),
-          )}
-          {/* Custom user-added header items */}
-          {Object.keys(placeholders)
-            .filter((k) => k.startsWith("CUSTOM_") && !k.endsWith("_URL"))
-            .map((fieldKey) =>
-              placeholders[`${fieldKey}_URL`] ? (
-                <HeaderLink
-                  key={fieldKey}
-                  fieldKey={fieldKey}
-                  placeholders={placeholders}
-                  editable={editable}
-                  onSave={handleLinkSave}
-                />
-              ) : (
-                <HeaderText
-                  key={fieldKey}
-                  fieldKey={fieldKey}
-                  placeholders={placeholders}
-                  editable={editable}
-                  onBlur={handleBlur}
-                />
-              ),
-            )}
-          {/* Add new header item button */}
-          {editable && (
-            <AddHeaderItem
-              placeholders={placeholders}
-              onAdd={(key, value, url) => {
-                if (onBatchEdit) {
-                  const updates: Record<string, string> = { [key]: value };
-                  if (url) updates[`${key}_URL`] = url;
-                  onBatchEdit(updates);
-                } else {
-                  onEdit?.(key, value);
-                  if (url) onEdit?.(`${key}_URL`, url);
-                }
-              }}
-            />
-          )}
+          {contactFields && contactFields.length > 0
+            ? /* ── Dynamic contact fields from profile ── */
+              contactFields
+                .filter((cf) => cf.visible && cf.value && cf.id !== "full_name" && cf.label.toLowerCase() !== "full name")
+                .map((cf) => {
+                  // Map contact field to placeholder key for rendering
+                  const fieldKey = `CF_${cf.id}`;
+                  if (cf.type === "link") {
+                    // Inject into placeholders so HeaderLink can read them
+                    const p = {
+                      ...placeholders,
+                      [fieldKey]: cf.value,
+                      [`${fieldKey}_URL`]:
+                        cf.url ||
+                        (cf.label.toLowerCase() === "email"
+                          ? `mailto:${cf.value}`
+                          : toUrl(cf.value)),
+                    };
+                    return (
+                      <HeaderLink
+                        key={cf.id}
+                        fieldKey={fieldKey}
+                        placeholders={p}
+                        editable={editable}
+                        onSave={handleLinkSave}
+                      />
+                    );
+                  }
+                  const p = { ...placeholders, [fieldKey]: cf.value };
+                  return (
+                    <HeaderText
+                      key={cf.id}
+                      fieldKey={fieldKey}
+                      placeholders={p}
+                      editable={editable}
+                      onBlur={handleBlur}
+                    />
+                  );
+                })
+            : /* ── Legacy: header fields from template settings ── */
+              <>
+                {settings.headerFields.map((fieldKey) =>
+                  LINK_FIELDS.has(fieldKey) ? (
+                    <HeaderLink
+                      key={fieldKey}
+                      fieldKey={fieldKey}
+                      placeholders={placeholders}
+                      editable={editable}
+                      onSave={handleLinkSave}
+                    />
+                  ) : (
+                    <HeaderText
+                      key={fieldKey}
+                      fieldKey={fieldKey}
+                      placeholders={placeholders}
+                      editable={editable}
+                      onBlur={handleBlur}
+                    />
+                  ),
+                )}
+                {/* Custom user-added header items */}
+                {Object.keys(placeholders)
+                  .filter((k) => k.startsWith("CUSTOM_") && !k.endsWith("_URL"))
+                  .map((fieldKey) =>
+                    placeholders[`${fieldKey}_URL`] ? (
+                      <HeaderLink
+                        key={fieldKey}
+                        fieldKey={fieldKey}
+                        placeholders={placeholders}
+                        editable={editable}
+                        onSave={handleLinkSave}
+                      />
+                    ) : (
+                      <HeaderText
+                        key={fieldKey}
+                        fieldKey={fieldKey}
+                        placeholders={placeholders}
+                        editable={editable}
+                        onBlur={handleBlur}
+                      />
+                    ),
+                  )}
+                {/* Add new header item button */}
+                {editable && (
+                  <AddHeaderItem
+                    placeholders={placeholders}
+                    onAdd={(key, value, url) => {
+                      if (onBatchEdit) {
+                        const updates: Record<string, string> = { [key]: value };
+                        if (url) updates[`${key}_URL`] = url;
+                        onBatchEdit(updates);
+                      } else {
+                        onEdit?.(key, value);
+                        if (url) onEdit?.(`${key}_URL`, url);
+                      }
+                    }}
+                  />
+                )}
+              </>
+          }
          </div>
         </div>
       </div>
@@ -500,6 +716,7 @@ export function ResumeContent({
           )}
         </div>
       )}
+      </div>
     </>
   );
 }

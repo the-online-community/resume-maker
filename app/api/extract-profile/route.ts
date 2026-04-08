@@ -47,6 +47,13 @@ const SYSTEM_PROMPT = `You are a resume parser. Given raw text extracted from a 
       "highlights": ["specific measurable achievement or accomplishment"]
     }
   ],
+  "certifications": [
+    {
+      "name": "AWS Solutions Architect",
+      "issuer": "Amazon Web Services",
+      "date": "2023"
+    }
+  ],
   "languages": [
     {
       "language": "English",

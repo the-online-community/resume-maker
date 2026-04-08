@@ -2,13 +2,13 @@
 
 import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import type { ProjectEntry, UserProfile } from "@/lib/profile";
+import type { ExperienceEntry, ProjectEntry, UserProfile } from "@/lib/profile";
 
 interface ProfileProjectsTabProps {
   draft: UserProfile;
@@ -59,6 +59,147 @@ interface ParsedImport {
   projects?: Omit<ProjectEntry, "id">[];
 }
 
+// ── Experience picker (link project → experiences) ───────────────────────────
+
+function ExperiencePicker({
+  projectName,
+  experiences,
+  linkedIndices,
+  onToggle,
+}: {
+  projectName: string;
+  experiences: ExperienceEntry[];
+  linkedIndices: number[];
+  onToggle: (expIndex: number) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const [query, setQuery] = useState("");
+  const [highlightIndex, setHighlightIndex] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const filtered = experiences
+    .map((exp, i) => ({ exp, i }))
+    .filter(
+      ({ exp }) =>
+        `${exp.title} ${exp.company}`
+          .toLowerCase()
+          .includes(query.toLowerCase()),
+    );
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.min(i + 1, filtered.length - 1));
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setHighlightIndex((i) => Math.max(i - 1, 0));
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      if (filtered[highlightIndex]) {
+        onToggle(filtered[highlightIndex].i);
+        setQuery("");
+        setHighlightIndex(0);
+      }
+    } else if (e.key === "Escape") {
+      setIsOpen(false);
+      inputRef.current?.blur();
+    }
+  };
+
+  const linkedExps = linkedIndices.map((i) => experiences[i]).filter(Boolean);
+
+  return (
+    <div className="space-y-1.5">
+      <label className="text-muted-foreground text-xs">
+        Linked Experience
+      </label>
+
+      {/* Selected experience chips */}
+      {linkedExps.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {linkedIndices.map((i) => {
+            const exp = experiences[i];
+            if (!exp) return null;
+            const label = [exp.title, exp.company].filter(Boolean).join(" @ ");
+            return (
+              <span
+                key={i}
+                className="bg-secondary text-secondary-foreground inline-flex items-center gap-1 rounded-none px-2 py-0.5 text-xs"
+              >
+                {label || `Experience ${i + 1}`}
+                <button
+                  type="button"
+                  onClick={() => onToggle(i)}
+                  className="hover:text-destructive cursor-pointer transition-colors"
+                  aria-label={`Unlink ${label}`}
+                >
+                  <HugeiconsIcon icon={Cancel01Icon} className="size-3" />
+                </button>
+              </span>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Search input */}
+      <div className="relative">
+        <Input
+          ref={inputRef}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setHighlightIndex(0);
+            setIsOpen(true);
+          }}
+          onFocus={() => setIsOpen(true)}
+          onBlur={() => setTimeout(() => setIsOpen(false), 150)}
+          onKeyDown={handleKeyDown}
+          placeholder="Search experiences to link…"
+          className="h-7 text-xs"
+        />
+        {isOpen && filtered.length > 0 && (
+          <ul className="border-border bg-popover absolute z-10 mt-1 max-h-40 w-full overflow-auto rounded border shadow-md">
+            {filtered.map(({ exp, i }, idx) => {
+              const label =
+                [exp.title, exp.company].filter(Boolean).join(" @ ") ||
+                `Experience ${i + 1}`;
+              const isLinked = linkedIndices.includes(i);
+              return (
+                <li
+                  key={i}
+                  className={`flex cursor-pointer items-center gap-2 px-2 py-1.5 text-xs ${
+                    idx === highlightIndex
+                      ? "bg-accent text-accent-foreground"
+                      : "hover:bg-accent/50"
+                  }`}
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    onToggle(i);
+                    setQuery("");
+                    setHighlightIndex(0);
+                  }}
+                  onMouseEnter={() => setHighlightIndex(idx)}
+                >
+                  <span
+                    className={`size-3 shrink-0 border ${isLinked ? "bg-primary border-primary" : "border-input"}`}
+                  />
+                  {label}
+                  {exp.start_date && (
+                    <span className="text-muted-foreground">
+                      ({exp.start_date}
+                      {exp.end_date ? `–${exp.end_date}` : ""})
+                    </span>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Collapsible project card ──────────────────────────────────────────────────
 
 function ProjectCard({
@@ -68,6 +209,9 @@ function ProjectCard({
   onToggle,
   onUpdate,
   onRemove,
+  experiences,
+  linkedExpIndices,
+  onToggleExp,
 }: {
   entry: ProjectEntry;
   index: number;
@@ -75,6 +219,9 @@ function ProjectCard({
   onToggle: () => void;
   onUpdate: (field: string, value: unknown) => void;
   onRemove: () => void;
+  experiences: ExperienceEntry[];
+  linkedExpIndices: number[];
+  onToggleExp: (expIndex: number) => void;
 }) {
   const label = entry.name || `Project ${index + 1}`;
 
@@ -194,6 +341,16 @@ function ProjectCard({
               className="min-h-20 resize-none"
             />
           </div>
+
+          {/* Link to experience — only if experiences exist */}
+          {experiences.length > 0 && (
+            <ExperiencePicker
+              projectName={entry.name}
+              experiences={experiences}
+              linkedIndices={linkedExpIndices}
+              onToggle={onToggleExp}
+            />
+          )}
         </div>
       )}
     </div>
@@ -248,9 +405,20 @@ export function ProfileProjectsTab({
   };
 
   const removeProject = (i: number) => {
+    const removedName = projects[i]?.name;
+    // Also unlink from any experience entries
+    const updatedExperience = removedName
+      ? draft.experience.map((exp) =>
+          exp.projects?.includes(removedName)
+            ? { ...exp, projects: exp.projects.filter((p) => p !== removedName) }
+            : exp,
+        )
+      : draft.experience;
+
     onChange({
       ...draft,
       projects: projects.filter((_, idx) => idx !== i),
+      experience: updatedExperience,
     });
     // Shift open card indices
     setOpenCards((prev) => {
@@ -261,6 +429,31 @@ export function ProfileProjectsTab({
       }
       return next;
     });
+  };
+
+  /** Get experience indices that link to a given project name */
+  const getLinkedExpIndices = (projectName: string): number[] => {
+    if (!projectName) return [];
+    return draft.experience
+      .map((exp, i) => (exp.projects?.includes(projectName) ? i : -1))
+      .filter((i) => i !== -1);
+  };
+
+  /** Toggle a project↔experience link from the project side */
+  const toggleExpLink = (projectName: string, expIndex: number) => {
+    if (!projectName) return;
+    const exp = draft.experience[expIndex];
+    if (!exp) return;
+
+    const currentProjects = exp.projects ?? [];
+    const isLinked = currentProjects.includes(projectName);
+    const updatedProjects = isLinked
+      ? currentProjects.filter((p) => p !== projectName)
+      : [...currentProjects, projectName];
+
+    const updatedExperience = [...draft.experience];
+    updatedExperience[expIndex] = { ...exp, projects: updatedProjects };
+    onChange({ ...draft, experience: updatedExperience });
   };
 
   // ── AI Import handlers ──
@@ -359,6 +552,9 @@ export function ProfileProjectsTab({
             onToggle={() => toggleCard(i)}
             onUpdate={(field, value) => updateProject(i, field, value)}
             onRemove={() => removeProject(i)}
+            experiences={draft.experience}
+            linkedExpIndices={getLinkedExpIndices(entry.name)}
+            onToggleExp={(expIndex) => toggleExpLink(entry.name, expIndex)}
           />
         ))}
       </div>

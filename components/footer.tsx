@@ -49,7 +49,7 @@ export function Footer() {
                 Complete your profile with skills, experience, education,
                 projects, and languages. Link projects to jobs so the AI
                 knows which achievements belong where. You can also import
-                from an existing resume PDF.
+                from up to 10 resume PDFs.
               </p>
             </div>
             <div className="space-y-1">

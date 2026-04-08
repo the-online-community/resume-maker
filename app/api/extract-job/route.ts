@@ -10,15 +10,25 @@ import { NextResponse } from "next/server";
 
 const LINKEDIN_JOB_VIEW = /linkedin\.com\/jobs\/view\//i;
 const CURRENT_JOB_ID = /currentJobId=(\d+)/i;
+const LINKEDIN_JOBS_URL = /linkedin\.com\/jobs\//i;
 
 function normalizeLinkedInUrl(raw: string): string | null {
   // Already a /jobs/view/ URL
   if (LINKEDIN_JOB_VIEW.test(raw)) return raw;
 
-  // Search URL with currentJobId param → convert to /jobs/view/:id
+  // Any LinkedIn /jobs/ URL with currentJobId param → convert to /jobs/view/:id
   const match = raw.match(CURRENT_JOB_ID);
   if (match?.[1]) {
     return `https://www.linkedin.com/jobs/view/${match[1]}`;
+  }
+
+  // Any other LinkedIn jobs URL (e.g. /jobs/collections/..., /jobs/search/...)
+  if (LINKEDIN_JOBS_URL.test(raw)) {
+    // Try to extract a numeric job ID from the path
+    const pathIdMatch = raw.match(/\/jobs\/[^?]*?(\d{5,})/);
+    if (pathIdMatch?.[1]) {
+      return `https://www.linkedin.com/jobs/view/${pathIdMatch[1]}`;
+    }
   }
 
   return null;

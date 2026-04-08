@@ -10,84 +10,10 @@ import { Input } from "@/components/ui/input";
 import {
   countSkills,
   DEFAULT_SKILL_CATEGORIES,
+  SKILL_SUGGESTIONS,
   type SkillsMap,
   type UserProfile,
 } from "@/lib/profile";
-
-// ── Skill suggestions per category ──────────────────────────────────────────
-
-const SKILL_SUGGESTIONS: Record<string, string[]> = {
-  Languages: [
-    "JavaScript", "TypeScript", "Python", "Java", "C#", "C++", "C",
-    "Go", "Rust", "Ruby", "PHP", "Swift", "Kotlin", "Scala", "Dart",
-    "R", "Lua", "Perl", "Elixir", "Clojure", "Haskell", "SQL",
-    "HTML", "CSS", "Bash", "PowerShell", "Objective-C",
-  ],
-  Frontend: [
-    "React", "Next.js", "Vue", "Nuxt", "Angular", "Svelte", "SvelteKit",
-    "Astro", "Remix", "Gatsby", "Tailwind CSS", "CSS Modules", "Sass",
-    "styled-components", "Radix UI", "shadcn/ui", "Material UI",
-    "Chakra UI", "Ant Design", "Bootstrap", "Framer Motion",
-    "Three.js", "D3.js", "Redux", "Zustand", "Jotai", "Recoil",
-    "TanStack Query", "React Hook Form", "Storybook", "Playwright",
-    "Cypress", "Jest", "Vitest", "Webpack", "Vite", "Turbopack",
-    "React Native", "Expo", "Electron", "Tauri",
-  ],
-  Backend: [
-    "Node.js", "Express", "Fastify", "NestJS", "Hono", "Koa",
-    "Django", "Flask", "FastAPI", "Spring Boot", "ASP.NET",
-    "Ruby on Rails", "Laravel", "Phoenix", "Gin", "Fiber",
-    "GraphQL", "REST API", "tRPC", "gRPC", "WebSockets",
-    "Server-Sent Events", "Microservices", "Message Queues",
-    "RabbitMQ", "Kafka", "Bull", "Celery", "Cron Jobs",
-  ],
-  Databases: [
-    "PostgreSQL", "MySQL", "MariaDB", "SQLite", "MongoDB",
-    "Redis", "Elasticsearch", "DynamoDB", "Cassandra", "CockroachDB",
-    "Supabase", "Firebase", "PlanetScale", "Neon", "Turso",
-    "Prisma", "Drizzle", "TypeORM", "Sequelize", "Mongoose",
-    "Knex", "SQL Server", "Oracle DB", "Neo4j", "InfluxDB",
-  ],
-  "DevOps & Cloud": [
-    "AWS", "Google Cloud", "Azure", "Vercel", "Netlify", "Cloudflare",
-    "Docker", "Kubernetes", "Terraform", "Pulumi", "Ansible",
-    "GitHub Actions", "GitLab CI", "CircleCI", "Jenkins",
-    "Nginx", "Caddy", "Linux", "Ubuntu", "Debian",
-    "S3", "EC2", "Lambda", "CloudFront", "RDS", "ECS", "EKS",
-    "Cloud Functions", "Cloud Run", "App Engine",
-    "Datadog", "Grafana", "Prometheus", "Sentry", "New Relic",
-  ],
-  "Tools & Libraries": [
-    "Git", "GitHub", "GitLab", "Bitbucket", "Jira", "Confluence",
-    "Figma", "Notion", "Slack", "Linear",
-    "Stripe", "Twilio", "SendGrid", "Auth0", "Clerk",
-    "OpenAI API", "Anthropic API", "LangChain", "Pinecone",
-    "Zod", "Yup", "Joi", "date-fns", "Lodash", "Axios",
-    "Socket.io", "Puppeteer", "Cheerio", "Sharp",
-    "ESLint", "Prettier", "Biome", "Husky",
-    "npm", "pnpm", "Yarn", "Bun", "Deno",
-    "Postman", "Insomnia", "VS Code", "Cursor",
-  ],
-  General: [
-    "SEO Optimization", "Performance Optimization", "Lazy Loading",
-    "Code Splitting", "Tree Shaking", "Bundle Optimization",
-    "Web Accessibility", "WCAG Compliance", "Responsive Design",
-    "Mobile-First Design", "Progressive Web Apps", "Server-Side Rendering",
-    "Static Site Generation", "Incremental Static Regeneration",
-    "Caching Strategies", "CDN Optimization", "Image Optimization",
-    "Core Web Vitals", "Lighthouse Audits",
-    "Authentication", "Authorization", "OAuth", "JWT", "RBAC",
-    "API Design", "Rate Limiting", "Input Validation", "Data Modeling",
-    "Design Patterns", "Clean Architecture", "SOLID Principles", "DRY",
-    "Test-Driven Development", "Unit Testing", "Integration Testing", "E2E Testing",
-    "CI/CD", "Agile", "Scrum", "Kanban", "Code Review",
-    "Technical Writing", "Documentation", "Mentoring",
-    "Monorepos", "Turborepo", "Nx",
-    "Internationalization", "Localization",
-    "Real-Time Applications", "WebRTC", "Streaming",
-    "Security Best Practices", "OWASP", "XSS Prevention", "CSRF Protection",
-  ],
-};
 
 // ── Autocomplete input ──────────────────────────────────────────────────────
 

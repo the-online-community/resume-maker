@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 
+// ── CSRF protection ─────────────────────────────────────────────────────────
+
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env";
+
 // ── Size limits (bytes / chars) ─────────────────────────────────────────────
 export const MAX_JSON_BODY = 512 * 1024; // 512 KB
 export const MAX_JOB_DESCRIPTION = 50_000; // chars
@@ -29,10 +33,7 @@ export async function safeJson<T = unknown>(
   try {
     return (await request.json()) as T;
   } catch {
-    return NextResponse.json(
-      { error: "Invalid JSON body" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 }
 
@@ -69,16 +70,14 @@ export function sanitizeUrl(input: unknown, maxLength = MAX_URL): string {
   }
 }
 
-// ── CSRF protection ─────────────────────────────────────────────────────────
-
-import { NEXT_PUBLIC_APP_URL } from "@/lib/env";
-
-const ALLOWED_ORIGINS = new Set([
-  NEXT_PUBLIC_APP_URL,
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "https://resume-maker.collegeofdawn.com",
-].filter(Boolean));
+const ALLOWED_ORIGINS = new Set(
+  [
+    NEXT_PUBLIC_APP_URL,
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://resume-maker.khaled-javdan.com",
+  ].filter(Boolean),
+);
 
 /**
  * Verify the request originates from our own site by checking the Origin
@@ -86,7 +85,8 @@ const ALLOWED_ORIGINS = new Set([
  * or null if the request is legitimate.
  */
 export function checkCsrf(request: Request): NextResponse | null {
-  const origin = request.headers.get("origin") ?? request.headers.get("referer");
+  const origin =
+    request.headers.get("origin") ?? request.headers.get("referer");
   if (!origin) {
     // No origin header — could be a server-to-server call or same-origin
     // navigation. Allow it; the auth layer is the real gate.
@@ -100,6 +100,9 @@ export function checkCsrf(request: Request): NextResponse | null {
     // Malformed origin header
   }
 
+  console.warn(
+    `[CSRF] Blocked origin: ${origin} | Allowed: ${[...ALLOWED_ORIGINS].join(", ")}`,
+  );
   return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 }
 

@@ -38,6 +38,14 @@ export async function GET(
     user: {
       id: userResult.data.user.id,
       email: userResult.data.user.email,
+      avatar_url:
+        userResult.data.user.user_metadata?.picture ??
+        userResult.data.user.user_metadata?.avatar_url ??
+        null,
+      full_name:
+        userResult.data.user.user_metadata?.full_name ??
+        userResult.data.user.user_metadata?.name ??
+        null,
       created_at: userResult.data.user.created_at,
       last_sign_in_at: userResult.data.user.last_sign_in_at,
     },

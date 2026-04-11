@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,6 +21,8 @@ interface UserDetail {
   user: {
     id: string;
     email: string;
+    avatar_url: string | null;
+    full_name: string | null;
     created_at: string;
     last_sign_in_at: string | null;
   };
@@ -92,15 +95,28 @@ export default function AdminUserDetailPage() {
       </Link>
 
       {/* User info */}
-      <div>
-        <h3 className="text-lg font-semibold">{user.email}</h3>
-        <p className="text-muted-foreground text-sm">
-          Signed up {new Date(user.created_at).toLocaleDateString()} &middot;
-          Last sign-in{" "}
-          {user.last_sign_in_at
-            ? new Date(user.last_sign_in_at).toLocaleDateString()
-            : "never"}
-        </p>
+      <div className="flex items-center gap-3">
+        <Avatar data-size="lg">
+          <AvatarImage src={user.avatar_url ?? undefined} alt={user.email} />
+          <AvatarFallback>
+            {(user.full_name || user.email).charAt(0).toUpperCase()}
+          </AvatarFallback>
+        </Avatar>
+        <div>
+          <h3 className="text-lg font-semibold">
+            {user.full_name || user.email}
+          </h3>
+          {user.full_name && (
+            <p className="text-muted-foreground text-sm">{user.email}</p>
+          )}
+          <p className="text-muted-foreground text-sm">
+            Signed up {new Date(user.created_at).toLocaleDateString()} &middot;
+            Last sign-in{" "}
+            {user.last_sign_in_at
+              ? new Date(user.last_sign_in_at).toLocaleDateString()
+              : "never"}
+          </p>
+        </div>
       </div>
 
       {/* Cards row */}

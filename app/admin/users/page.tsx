@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -18,6 +19,8 @@ import {
 interface UserRow {
   id: string;
   email: string;
+  avatar_url: string | null;
+  full_name: string | null;
   created_at: string;
   usage: { count: number; daily_limit: number; bonus_credits: number } | null;
   subscription_status: string | null;
@@ -92,9 +95,15 @@ export default function AdminUsersPage() {
                   <TableCell>
                     <Link
                       href={`/admin/users/${u.id}`}
-                      className="text-blue-600 hover:underline dark:text-blue-400"
+                      className="flex items-center gap-2 text-blue-600 hover:underline dark:text-blue-400"
                     >
-                      {u.email}
+                      <Avatar data-size="sm">
+                        <AvatarImage src={u.avatar_url ?? undefined} alt={u.email} />
+                        <AvatarFallback>
+                          {(u.full_name || u.email).charAt(0).toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                      <span className="truncate">{u.email}</span>
                     </Link>
                   </TableCell>
                   <TableCell className="text-muted-foreground">

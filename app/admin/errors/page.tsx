@@ -57,7 +57,7 @@ export default function AdminErrorsPage() {
     );
   }
 
-  const routes = Object.entries(data.routeSummary).sort(
+  const routes = Object.entries(data.routeSummary ?? {}).sort(
     ([, a], [, b]) => b - a,
   );
 

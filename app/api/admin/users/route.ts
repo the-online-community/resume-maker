@@ -58,6 +58,14 @@ export async function GET(request: Request) {
   const result = filtered.map((u) => ({
     id: u.id,
     email: u.email ?? "",
+    avatar_url:
+      u.user_metadata?.picture ??
+      u.user_metadata?.avatar_url ??
+      null,
+    full_name:
+      u.user_metadata?.full_name ??
+      u.user_metadata?.name ??
+      null,
     created_at: u.created_at,
     usage: usageMap.get(u.id) ?? null,
     subscription_status: subsMap.get(u.id) ?? null,

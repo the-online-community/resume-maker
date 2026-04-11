@@ -127,5 +127,6 @@ export const RESUME_PRINT_CSS = `
     @page { margin: 0.5in; size: letter; }
     .resume-entry { break-inside: avoid; }
     .resume-header { break-inside: avoid; }
+    .resume-section h2 { break-after: avoid; }
   }
 `;

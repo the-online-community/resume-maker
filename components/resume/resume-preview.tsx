@@ -47,7 +47,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
     const containerRef = useRef<HTMLDivElement>(null);
     const [pageCount, setPageCount] = useState(1);
     const [scale, setScale] = useState(1);
-    const [breakPadding, setBreakPadding] = useState<number[]>([]);
 
     // Merge the forwarded ref with our measurement ref
     const setMeasureRef = useCallback(
@@ -63,13 +62,8 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       [ref],
     );
 
-    // Callbacks from the measurement ResumeContent's page-break logic
     const handlePageCount = useCallback((count: number) => {
       setPageCount(count);
-    }, []);
-
-    const handleBreakPadding = useCallback((padding: number[]) => {
-      setBreakPadding(padding);
     }, []);
 
     // Responsive scaling — fit the page frames into the container
@@ -157,7 +151,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
             contactFields={contactFields}
             pageHeight={PAGE_HEIGHT}
             onPageCount={handlePageCount}
-            onBreakPadding={handleBreakPadding}
           />
         </div>
 
@@ -212,7 +205,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                         contactFields={contactFields}
                         highlightKeywords={highlightKeywords}
                         pageHeight={PAGE_HEIGHT}
-                        breakPadding={breakPadding}
                       />
                     </div>
                   </div>

@@ -54,28 +54,39 @@ function experienceToHtml(
   bulletStyle: TemplateSettings["bulletStyle"],
 ) {
   const bulletChar = BULLET_CHARS[bulletStyle];
-  let isFirstRoleLine = true;
-  return text
-    .split("\n")
-    .map((line) => {
-      const trimmed = line.trim();
-      if (!trimmed) {
-        // Blank line = role separator, next non-bullet line is a new role title
-        isFirstRoleLine = true;
-        return "<br>";
+
+  // Split into role blocks separated by blank lines
+  const blocks: string[][] = [];
+  let current: string[] = [];
+  for (const line of text.split("\n")) {
+    if (!line.trim()) {
+      if (current.length) {
+        blocks.push(current);
+        current = [];
       }
-      const isBullet = /^[•\-—*]/.test(trimmed);
-      if (isBullet) {
-        const content = trimmed.replace(/^[•\-—*]\s*/, `${bulletChar} `);
-        return `<div>${escapeHtml(content)}</div>`;
-      }
-      // Non-bullet line: bold only the first one per role block (job title)
-      if (isFirstRoleLine && boldLabels) {
-        isFirstRoleLine = false;
-        return `<div style="font-weight:600">${escapeHtml(line)}</div>`;
-      }
-      isFirstRoleLine = false;
-      return `<div>${escapeHtml(line)}</div>`;
+    } else {
+      current.push(line);
+    }
+  }
+  if (current.length) blocks.push(current);
+
+  return blocks
+    .map((lines) => {
+      const inner = lines
+        .map((line, i) => {
+          const trimmed = line.trim();
+          const isBullet = /^[•\-—*]/.test(trimmed);
+          if (isBullet) {
+            const content = trimmed.replace(/^[•\-—*]\s*/, `${bulletChar} `);
+            return `<div>${escapeHtml(content)}</div>`;
+          }
+          if (i === 0 && boldLabels) {
+            return `<div style="font-weight:600">${escapeHtml(line)}</div>`;
+          }
+          return `<div>${escapeHtml(line)}</div>`;
+        })
+        .join("");
+      return `<div class="resume-entry">${inner}</div>`;
     })
     .join("");
 }
@@ -410,41 +421,69 @@ export function ResumeContent({
     if (!root || !pageHeight || !onBreakPadding) return;
 
     const frameId = requestAnimationFrame(() => {
-      const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
+      // Collect all breakable elements: sections, header, and individual entries
+      const breakables = root.querySelectorAll<HTMLElement>(
+        ".resume-section, .resume-header, .resume-entry",
+      );
 
       // 1. Clear previous padding
-      for (const s of sections) {
-        s.style.paddingTop = "";
+      for (const el of breakables) {
+        el.style.paddingTop = "";
       }
 
-      // 2. Read ALL positions at once (before any mutations)
-      const measurements: { el: HTMLElement; top: number; height: number }[] = [];
+      // 2. Build a flat list of "breakable units" in document order.
+      //    For sections that contain .resume-entry children, we break at
+      //    entry level. For sections without entries (SUMMARY, SKILLS, etc.),
+      //    the section itself is the breakable unit. The header is always a unit.
+      const units: HTMLElement[] = [];
+      const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
       for (const section of sections) {
-        measurements.push({
-          el: section,
-          top: section.offsetTop,
-          height: section.offsetHeight,
-        });
+        const entries = section.querySelectorAll<HTMLElement>(":scope > .resume-editable > .resume-entry, :scope > div > .resume-entry, :scope > .resume-entry");
+        if (entries.length > 0) {
+          // Section heading is its own unit so it doesn't get orphaned
+          const heading = section.querySelector<HTMLElement>("h2");
+          if (heading) units.push(heading);
+          for (const entry of entries) {
+            units.push(entry);
+          }
+        } else {
+          units.push(section);
+        }
       }
 
-      // 3. Compute and apply padding
-      const paddings: number[] = [];
+      // 3. Read ALL positions at once (before any mutations)
+      const measurements = units.map((el) => ({
+        el,
+        top: el.offsetTop,
+        height: el.offsetHeight,
+      }));
+
+      // 4. Compute and apply padding
       let totalShift = 0;
       for (const { el, top, height } of measurements) {
         const adjustedTop = top + totalShift;
         const pageEnd = (Math.floor(adjustedTop / pageHeight) + 1) * pageHeight;
         const remaining = pageEnd - adjustedTop;
 
+        // Would this element cross a page boundary?
         if (height > remaining && remaining < pageHeight - 1) {
-          paddings.push(remaining);
-          el.style.paddingTop = `${remaining}px`;
-          totalShift += remaining;
-        } else {
-          paddings.push(0);
+          // If the element itself is taller than a full page, don't add padding
+          // (it will overflow naturally — can't avoid splitting it)
+          if (height <= pageHeight) {
+            el.style.paddingTop = `${remaining}px`;
+            totalShift += remaining;
+          }
         }
       }
 
-      // 4. Report padding and page count
+      // 5. Build padding array for sections (for visual mode)
+      const sectionEls = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
+      const paddings: number[] = [];
+      for (const s of sectionEls) {
+        const pt = parseFloat(s.style.paddingTop) || 0;
+        paddings.push(pt);
+      }
+
       onBreakPadding(paddings);
       if (onPageCount) {
         onPageCount(Math.max(1, Math.ceil(root.scrollHeight / pageHeight)));
@@ -454,20 +493,37 @@ export function ResumeContent({
     return () => cancelAnimationFrame(frameId);
   }, [placeholders, pageHeight, onBreakPadding, onPageCount]);
 
-  // Visual mode: apply pre-computed break padding
+  // Visual mode: apply pre-computed break padding and re-run entry-level breaks
   useEffect(() => {
     const root = resumeRootRef.current;
     if (!root || !breakPadding?.length) return;
 
     const frameId = requestAnimationFrame(() => {
+      // Apply section-level padding
       const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
       for (let i = 0; i < sections.length && i < breakPadding.length; i++) {
         sections[i].style.paddingTop = breakPadding[i] > 0 ? `${breakPadding[i]}px` : "";
       }
+
+      // Also apply entry-level padding for visual instances
+      if (!pageHeight) return;
+      const entries = root.querySelectorAll<HTMLElement>(".resume-entry");
+      for (const entry of entries) {
+        entry.style.paddingTop = "";
+      }
+      for (const entry of entries) {
+        const top = entry.offsetTop;
+        const height = entry.offsetHeight;
+        const pageEnd = (Math.floor(top / pageHeight) + 1) * pageHeight;
+        const remaining = pageEnd - top;
+        if (height > remaining && remaining < pageHeight - 1 && height <= pageHeight) {
+          entry.style.paddingTop = `${remaining}px`;
+        }
+      }
     });
 
     return () => cancelAnimationFrame(frameId);
-  }, [breakPadding, placeholders]);
+  }, [breakPadding, placeholders, pageHeight]);
 
   // ── Keyword highlighting ──
 

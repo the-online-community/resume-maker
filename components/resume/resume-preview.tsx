@@ -131,10 +131,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
       return (
         <div className="text-muted-foreground flex h-fit min-h-136 flex-col items-center justify-center border p-10 text-center text-sm">
           <p>Your tailored resume will appear here</p>
-          <p className="mt-1 text-xs">
-            Paste a job description, upload your resumes, and click &quot;Tailor
-            Resume&quot;
-          </p>
         </div>
       );
     }
@@ -177,7 +173,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
             }}
           >
             {Array.from({ length: pageCount }, (_, i) => {
-              const isLast = i === pageCount - 1;
               return (
                 <div
                   key={i}

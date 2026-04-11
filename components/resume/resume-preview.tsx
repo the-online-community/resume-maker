@@ -1,6 +1,6 @@
 "use client";
 
-import { forwardRef, useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   CONTENT_WIDTH,
@@ -12,13 +12,29 @@ import { ResumeContent } from "@/components/resume/resume-content";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ContactField } from "@/lib/profile";
+import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
 import type { TemplateSettings } from "@/lib/resume/templates";
+
+/**
+ * Maximum pages we support. The measurement div creates this many CSS columns;
+ * unused columns stay empty and don't affect layout.
+ */
+const MAX_PAGES = 10;
+
+/** Shared inline styles for the CSS column container that drives pagination. */
+const columnStyle = (pages: number): React.CSSProperties => ({
+  width: CONTENT_WIDTH * pages,
+  columnWidth: CONTENT_WIDTH,
+  columnGap: 0,
+  columnFill: "auto" as const,
+  height: PAGE_HEIGHT,
+});
 
 interface ResumePreviewProps {
   placeholders: Record<string, string> | null;
   isLoading: boolean;
   isStreaming?: boolean;
-  onDownloadPdf?: () => void;
+  resumeTitle?: string;
   onPlaceholderChange?: (key: string, value: string) => void;
   onBatchPlaceholderChange?: (updates: Record<string, string>) => void;
   jobDescription?: string;
@@ -27,44 +43,71 @@ interface ResumePreviewProps {
   highlightKeywords?: string[];
 }
 
-const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
-  function ResumePreview(
-    {
-      placeholders,
-      isLoading,
-      isStreaming,
-      onDownloadPdf,
-      onPlaceholderChange,
-      onBatchPlaceholderChange,
-      jobDescription,
-      templateSettings,
-      contactFields,
-      highlightKeywords,
-    },
-    ref,
-  ) {
+export default function ResumePreview({
+  placeholders,
+  isLoading,
+  isStreaming,
+  resumeTitle,
+  onPlaceholderChange,
+  onBatchPlaceholderChange,
+  jobDescription,
+  templateSettings,
+  contactFields,
+  highlightKeywords,
+}: ResumePreviewProps) {
     const measureRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const [pageCount, setPageCount] = useState(1);
     const [scale, setScale] = useState(1);
 
-    // Merge the forwarded ref with our measurement ref
-    const setMeasureRef = useCallback(
-      (node: HTMLDivElement | null) => {
-        (measureRef as React.MutableRefObject<HTMLDivElement | null>).current =
-          node;
-        if (typeof ref === "function") {
-          ref(node);
-        } else if (ref) {
-          (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
-        }
-      },
-      [ref],
-    );
+    // Determine page count from the CSS column measurement div.
+    // CSS columns apply break-inside/break-after rules natively, so the
+    // page breaks here match what the browser's print engine produces.
+    useEffect(() => {
+      const root = measureRef.current;
+      if (!root || !placeholders) return;
 
-    const handlePageCount = useCallback((count: number) => {
-      setPageCount(count);
-    }, []);
+      const frameId = requestAnimationFrame(() => {
+        const rootRect = root.getBoundingClientRect();
+        const elements = root.querySelectorAll(
+          ".resume-section, .resume-header",
+        );
+        let maxRight = CONTENT_WIDTH;
+        for (const el of elements) {
+          maxRight = Math.max(
+            maxRight,
+            el.getBoundingClientRect().right - rootRect.left,
+          );
+        }
+        setPageCount(Math.max(1, Math.ceil(maxRight / CONTENT_WIDTH)));
+      });
+
+      return () => cancelAnimationFrame(frameId);
+    }, [placeholders, isStreaming]);
+
+    // PDF generation — flat content with CSS print break rules.
+    // The browser's print engine uses the same break-inside/break-after
+    // rules as the CSS column preview, guaranteeing identical pagination.
+    const handleDownloadPdf = useCallback(() => {
+      const el = measureRef.current;
+      if (!el) return;
+
+      const printWindow = window.open("", "_blank");
+      if (!printWindow) return;
+
+      const title = resumeTitle || "Resume";
+      const contentHtml = el.innerHTML;
+
+      printWindow.document.write(
+        `<!DOCTYPE html><html><head><title>${title}</title><style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}${RESUME_CSS}${RESUME_PRINT_CSS}</style></head><body><div class="resume-page" style="width:${CONTENT_WIDTH}px">${contentHtml}</div></body></html>`,
+      );
+      printWindow.document.close();
+
+      printWindow.onload = () => {
+        printWindow.print();
+        printWindow.close();
+      };
+    }, [resumeTitle]);
 
     // Responsive scaling — fit the page frames into the container
     useEffect(() => {
@@ -130,18 +173,25 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
     }
 
     // Total visual height of all pages (for negative margin calculation after scale)
-    // Each page frame = PAGE_HEIGHT + 2*padding, plus 24px gap between pages
     const pageFrameHeight = PAGE_HEIGHT + PAGE_PADDING * 2;
     const totalVisualHeight =
       pageCount * pageFrameHeight + (pageCount - 1) * 24;
 
     return (
       <div className="flex min-w-0 flex-col gap-4">
-        {/* Hidden measurement div — with page-break padding applied by ResumeContent */}
+        {/* Hidden measurement div — CSS column layout determines page breaks.
+            break-inside:avoid and break-after:avoid are applied by RESUME_CSS,
+            so the browser paginates content into columns identically to how
+            it paginates pages in print. */}
         <div
-          ref={setMeasureRef}
-          className="resume-page absolute -left-[9999px]"
-          style={{ width: CONTENT_WIDTH }}
+          ref={measureRef}
+          className="resume-page"
+          style={{
+            position: "absolute",
+            left: -99999,
+            visibility: "hidden",
+            ...columnStyle(MAX_PAGES),
+          }}
           aria-hidden="true"
         >
           <ResumeContent
@@ -149,12 +199,10 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
             isStreaming={isStreaming}
             templateSettings={templateSettings}
             contactFields={contactFields}
-            pageHeight={PAGE_HEIGHT}
-            onPageCount={handlePageCount}
           />
         </div>
 
-        {/* Visual pages — responsive scaled */}
+        {/* Visual pages — each frame clips one CSS column via translateX */}
         <div ref={containerRef} className="w-full">
           <div
             style={{
@@ -190,10 +238,13 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                       height: PAGE_HEIGHT,
                     }}
                   >
-                    {/* Content slice — offset by page index */}
+                    {/* Column container — shows column i via translateX */}
                     <div
                       className="resume-page"
-                      style={{ marginTop: -(i * PAGE_HEIGHT) }}
+                      style={{
+                        ...columnStyle(MAX_PAGES),
+                        transform: `translateX(${-i * CONTENT_WIDTH}px)`,
+                      }}
                     >
                       <ResumeContent
                         placeholders={placeholders}
@@ -204,7 +255,6 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
                         templateSettings={templateSettings}
                         contactFields={contactFields}
                         highlightKeywords={highlightKeywords}
-                        pageHeight={PAGE_HEIGHT}
                       />
                     </div>
                   </div>
@@ -217,14 +267,11 @@ const ResumePreview = forwardRef<HTMLDivElement, ResumePreviewProps>(
         {/* Actions */}
         {!isStreaming && (
           <div className="flex gap-3">
-            <Button size="lg" className="flex-1" onClick={onDownloadPdf}>
+            <Button size="lg" className="flex-1" onClick={handleDownloadPdf}>
               Download PDF
             </Button>
           </div>
         )}
       </div>
     );
-  },
-);
-
-export default ResumePreview;
+}

@@ -19,7 +19,6 @@ import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
 import { categorizeSkills, EMPTY_PROFILE, flattenSkills, isProfileEmpty, migrateContactFields, migrateSkills, type UserProfile } from "@/lib/profile";
-import { RESUME_CSS, RESUME_PRINT_CSS } from "@/lib/resume/resume-styles";
 import {
   DEFAULT_SETTINGS,
   DEFAULT_TEMPLATE,
@@ -46,7 +45,6 @@ export default function Page() {
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
   const jobDescriptionRef = useRef("");
-  const resumeRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isStreaming, setIsStreaming] = useState(false);
   const {
@@ -809,37 +807,6 @@ export default function Page() {
     ],
   );
 
-  const handleDownloadPdf = useCallback(() => {
-    const element = resumeRef.current;
-    if (!element) return;
-
-    const printWindow = window.open("", "_blank");
-    if (!printWindow) return;
-
-    const title = resumeTitle || "Resume";
-
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-            ${RESUME_CSS}
-            ${RESUME_PRINT_CSS}
-          </style>
-        </head>
-        <body class="resume-page">${element.innerHTML}</body>
-      </html>
-    `);
-    printWindow.document.close();
-
-    // Wait for content to render, then trigger print
-    printWindow.onload = () => {
-      printWindow.print();
-      printWindow.close();
-    };
-  }, [resumeTitle]);
 
   // Compute which job keywords actually appear in the resume text (client-side, deterministic)
   // Splits compound keywords like "JavaScript & TypeScript" into atomic terms for accurate matching
@@ -1232,11 +1199,10 @@ export default function Page() {
                 </div>
               )}
               <ResumePreview
-                ref={resumeRef}
                 placeholders={placeholders}
                 isLoading={isLoading}
                 isStreaming={isStreaming}
-                onDownloadPdf={handleDownloadPdf}
+                resumeTitle={resumeTitle}
                 jobDescription={jobDescriptionRef.current}
                 templateSettings={templateSettings}
                 contactFields={userProfile.contact_fields}

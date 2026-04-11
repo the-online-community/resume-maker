@@ -28,9 +28,6 @@ interface ResumeContentProps {
   templateSettings?: TemplateSettings;
   contactFields?: ContactField[];
   highlightKeywords?: string[];
-  /** When set, sections are padded to avoid splitting across page boundaries. */
-  pageHeight?: number;
-  onPageCount?: (count: number) => void;
 }
 
 const BULLET_CHARS: Record<TemplateSettings["bulletStyle"], string> = {
@@ -282,8 +279,6 @@ export function ResumeContent({
   templateSettings,
   contactFields,
   highlightKeywords,
-  pageHeight,
-  onPageCount,
 }: ResumeContentProps) {
   const settings = templateSettings || DEFAULT_SETTINGS;
   const editable = !isStreaming && !!onEdit;
@@ -404,78 +399,7 @@ export function ResumeContent({
     );
   }
 
-  // ── Page-break avoidance ──
   const resumeRootRef = useRef<HTMLDivElement>(null);
-
-  // Unified page-break avoidance — runs on every instance that has pageHeight
-  useEffect(() => {
-    const root = resumeRootRef.current;
-    if (!root || !pageHeight) return;
-
-    const frameId = requestAnimationFrame(() => {
-      // 1. Clear all previous break padding
-      const allBreakable = root.querySelectorAll<HTMLElement>(
-        ".resume-section, .resume-header, .resume-entry, .resume-section h2",
-      );
-      for (const el of allBreakable) {
-        el.style.paddingTop = "";
-      }
-
-      // 2. Build breakable units in document order.
-      //    Sections with .resume-entry children break at entry level.
-      //    The section itself (heading + first entry) is one unit to prevent orphaned headings.
-      //    Sections without entries are a single unit.
-      const units: HTMLElement[] = [];
-      const sections = root.querySelectorAll<HTMLElement>(".resume-section, .resume-header");
-      for (const section of sections) {
-        const entries = section.querySelectorAll<HTMLElement>(
-          ":scope > .resume-editable > .resume-entry, :scope > div > .resume-entry, :scope > .resume-entry",
-        );
-        if (entries.length > 0) {
-          // Treat the whole section as a unit for the heading + first entry,
-          // then each subsequent entry is its own unit
-          units.push(section); // section includes heading + first entry
-          for (let i = 1; i < entries.length; i++) {
-            units.push(entries[i]);
-          }
-        } else {
-          units.push(section);
-        }
-      }
-
-      // 3. Measure all positions before any mutations
-      const measurements = units.map((el) => ({
-        el,
-        top: el.offsetTop,
-        height: el.offsetHeight,
-      }));
-
-      // 4. Apply padding to push elements that cross page boundaries
-      let totalShift = 0;
-      for (const { el, top, height } of measurements) {
-        const adjustedTop = top + totalShift;
-        const pageIndex = Math.floor(adjustedTop / pageHeight);
-        const pageEnd = (pageIndex + 1) * pageHeight;
-        const remaining = pageEnd - adjustedTop;
-
-        // Would this element cross a page boundary?
-        if (height > remaining && remaining > 0 && remaining < pageHeight - 1) {
-          // Skip if element is taller than a full page (can't avoid splitting)
-          if (height <= pageHeight) {
-            el.style.paddingTop = `${remaining}px`;
-            totalShift += remaining;
-          }
-        }
-      }
-
-      // 5. Report page count to parent (measurement instance)
-      if (onPageCount) {
-        onPageCount(Math.max(1, Math.ceil(root.scrollHeight / pageHeight)));
-      }
-    });
-
-    return () => cancelAnimationFrame(frameId);
-  }, [placeholders, pageHeight, onPageCount]);
 
   // ── Keyword highlighting ──
 
@@ -567,7 +491,7 @@ export function ResumeContent({
           }
         `}</style>
       ) : null}
-      <div ref={resumeRootRef}>
+      <div ref={resumeRootRef} style={{ position: 'relative' }}>
 
       {/* Header */}
       <div className="resume-header">

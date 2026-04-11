@@ -106,6 +106,8 @@ export default function ResumePreview({
       printWindow.onload = () => {
         printWindow.print();
         printWindow.close();
+        // Fire-and-forget analytics
+        fetch("/api/track-download", { method: "POST" }).catch(() => {});
       };
     }, [resumeTitle]);
 

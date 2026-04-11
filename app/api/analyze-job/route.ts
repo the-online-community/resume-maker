@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
+import { trackEvent, trackApiError } from "@/lib/admin/track";
 import { parseAiJson } from "@/lib/ai-json";
 import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -100,6 +101,7 @@ export async function POST(request: Request) {
         message.content[0]?.type === "text" ? message.content[0].text : "";
       const parsed = parseAiJson<AnalyzeJobResponse>(text);
 
+      trackEvent({ userId: user.id, eventType: "job_analyzed", model: modelId });
       return new Response(JSON.stringify(parsed), {
         headers: { "Content-Type": "application/json" },
       });
@@ -120,11 +122,18 @@ export async function POST(request: Request) {
     const text = completion.choices[0]?.message?.content ?? "{}";
     const parsed = parseAiJson<AnalyzeJobResponse>(text);
 
+    trackEvent({ userId: user.id, eventType: "job_analyzed", model: modelId });
     return new Response(JSON.stringify(parsed), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Analyze job API error:", error);
+    trackApiError({
+      route: "/api/analyze-job",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      statusCode: 500,
+      userId: user.id,
+    });
     const message =
       error instanceof Error
         ? error.message

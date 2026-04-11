@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
 import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
+import { trackEvent, trackApiError } from "@/lib/admin/track";
 import { rateLimitResponse } from "@/lib/rate-limit";
 import {
   isErrorResponse,
@@ -325,6 +326,8 @@ Generate a resume draft as JSON with these fields: ${placeholderList}`;
         },
       });
 
+      trackEvent({ userId: user.id, eventType: "resume_generated", model: modelId });
+
       return new Response(readable, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
@@ -363,6 +366,8 @@ Generate a resume draft as JSON with these fields: ${placeholderList}`;
       },
     });
 
+    trackEvent({ userId: user.id, eventType: "resume_generated", model: modelId });
+
     return new Response(readable, {
       headers: {
         "Content-Type": "text/plain; charset=utf-8",
@@ -372,6 +377,12 @@ Generate a resume draft as JSON with these fields: ${placeholderList}`;
     });
   } catch (error) {
     console.error("Tailor API error:", error);
+    trackApiError({
+      route: "/api/tailor",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      statusCode: 500,
+      userId: user.id,
+    });
     return new Response(JSON.stringify({ error: "Failed to tailor resume" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },

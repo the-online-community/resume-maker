@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
+import { trackEvent, trackApiError } from "@/lib/admin/track";
 import { parseAiJson } from "@/lib/ai-json";
 import { isErrorResponse, safeJson, sanitizeString, MAX_JOB_DESCRIPTION } from "@/lib/api/sanitize";
 import { rateLimitResponse } from "@/lib/rate-limit";
@@ -117,6 +118,7 @@ export async function POST(request: Request) {
         missingKeywords: [],
         fixes: [],
       };
+      trackEvent({ userId: user.id, eventType: "score_checked", model: modelId });
       return new Response(JSON.stringify(result), {
         headers: { "Content-Type": "application/json" },
       });
@@ -209,11 +211,18 @@ export async function POST(request: Request) {
       fixes: validFixes,
     };
 
+    trackEvent({ userId: user.id, eventType: "score_checked", model: modelId });
     return new Response(JSON.stringify(result), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Analyze resume API error:", error);
+    trackApiError({
+      route: "/api/analyze-resume",
+      errorMessage: error instanceof Error ? error.message : "Unknown error",
+      statusCode: 500,
+      userId: user.id,
+    });
     const message =
       error instanceof Error ? error.message : "Failed to analyze resume";
     return new Response(

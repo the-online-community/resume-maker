@@ -1,6 +1,6 @@
 "use client";
 
-import { Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
+import { ArrowDown01Icon, ArrowUp01Icon, Cancel01Icon, PlusSignIcon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useRef, useState } from "react";
 
@@ -172,6 +172,14 @@ export function ProfileExperienceTab({
       experience: draft.experience.filter((_, idx) => idx !== i),
     });
 
+  const moveExperience = (index: number, direction: -1 | 1) => {
+    const target = index + direction;
+    if (target < 0 || target >= draft.experience.length) return;
+    const updated = [...draft.experience];
+    [updated[index], updated[target]] = [updated[target], updated[index]];
+    onChange({ ...draft, experience: updated });
+  };
+
   return (
     <div className="space-y-3">
       {/* Years of experience */}
@@ -203,16 +211,39 @@ export function ProfileExperienceTab({
         </p>
       )}
       {draft.experience.map((entry, i) => (
-        <div key={i} className="border-border relative border p-3">
-          <button
-            type="button"
-            onClick={() => removeExperience(i)}
-            className="text-muted-foreground hover:text-destructive absolute top-2 right-2 cursor-pointer transition-colors"
-            aria-label="Remove entry"
-          >
-            <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
-          </button>
-          <div className="grid grid-cols-2 gap-2 pr-6">
+        <div key={i} className="border-border flex gap-2 border p-3">
+          {/* Reorder arrows */}
+          <div className="flex shrink-0 flex-col justify-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => moveExperience(i, -1)}
+              disabled={i === 0}
+              className="text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-default disabled:opacity-20"
+              aria-label="Move up"
+            >
+              <HugeiconsIcon icon={ArrowUp01Icon} className="size-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => moveExperience(i, 1)}
+              disabled={i === draft.experience.length - 1}
+              className="text-muted-foreground hover:text-foreground cursor-pointer disabled:cursor-default disabled:opacity-20"
+              aria-label="Move down"
+            >
+              <HugeiconsIcon icon={ArrowDown01Icon} className="size-3" />
+            </button>
+          </div>
+
+          <div className="relative min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => removeExperience(i)}
+              className="text-muted-foreground hover:text-destructive absolute top-0 right-0 cursor-pointer transition-colors"
+              aria-label="Remove entry"
+            >
+              <HugeiconsIcon icon={Cancel01Icon} className="size-3.5" />
+            </button>
+            <div className="grid grid-cols-2 gap-2 pr-6">
             <div className="col-span-2 space-y-1">
               <label className="text-muted-foreground text-xs">Job Title</label>
               <Input
@@ -280,6 +311,7 @@ export function ProfileExperienceTab({
                 )
               }
             />
+          </div>
           </div>
         </div>
       ))}

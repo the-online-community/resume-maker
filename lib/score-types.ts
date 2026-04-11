@@ -5,6 +5,10 @@ export interface KeywordFix {
   action: string;
   currentSnippet: string;
   fixedSnippet: string;
+  /** When set, this fix is an append-style operation: just append `append` to
+   *  the current state of `section`. Used as a fallback for missing keywords
+   *  that the AI couldn't weave in surgically. */
+  append?: string;
 }
 
 export interface ScoreResult {

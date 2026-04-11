@@ -2,6 +2,11 @@ import { createClient as createAdminClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 
+import { NEXT_PUBLIC_SUPABASE_URL } from "@/lib/env";
+import {
+  STRIPE_WEBHOOK_SECRET,
+  SUPABASE_SERVICE_ROLE_KEY,
+} from "@/lib/env.server";
 import { stripe } from "@/lib/stripe";
 
 export async function POST(req: NextRequest) {
@@ -13,7 +18,7 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(
       body,
       sig,
-      process.env.STRIPE_WEBHOOK_SECRET!,
+      STRIPE_WEBHOOK_SECRET,
     );
   } catch {
     return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
@@ -21,8 +26,8 @@ export async function POST(req: NextRequest) {
 
   // Use the service role client to bypass RLS
   const supabase = createAdminClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    NEXT_PUBLIC_SUPABASE_URL,
+    SUPABASE_SERVICE_ROLE_KEY,
   );
 
   switch (event.type) {

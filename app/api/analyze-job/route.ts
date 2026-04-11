@@ -1,8 +1,18 @@
 import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
+import { parseAiJson } from "@/lib/ai-json";
+import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
+import {
+  isErrorResponse,
+  MAX_JOB_DESCRIPTION,
+  safeJson,
+  sanitizeString,
+} from "@/lib/api/sanitize";
 import { MODELS } from "@/lib/models";
 import { flattenSkills, type UserProfile } from "@/lib/profile";
+import { ANALYZE_JOB_PROMPT } from "@/lib/prompts";
+import { getAuthClient } from "@/lib/supabase/server";
 
 interface AnalyzeJobRequest {
   jobDescription: string;
@@ -27,9 +37,7 @@ function buildProfileContext(profile?: UserProfile): string {
     parts.push(`CANDIDATE SKILLS: ${allSkills.join(", ")}`);
   }
   if (profile.experience?.length) {
-    const roles = profile.experience.map(
-      (e) => `${e.title} at ${e.company}`,
-    );
+    const roles = profile.experience.map((e) => `${e.title} at ${e.company}`);
     parts.push(`EXPERIENCE: ${roles.join("; ")}`);
   }
   if (profile.education?.length) {
@@ -41,27 +49,28 @@ function buildProfileContext(profile?: UserProfile): string {
   return parts.length > 0 ? `\n\n${parts.join("\n")}` : "";
 }
 
-const SYSTEM_PROMPT = `You are a career advisor. Given a job description (and optionally a candidate profile), extract key information and return a JSON object with exactly these fields:
-
-- "overview": 2-3 sentence summary of what the role is, the company, and key responsibilities. Be concise.
-- "skills": array of 10-25 ATOMIC keywords/technologies/tools required by the job. Each item must be a single, specific, searchable term — e.g. "React", "TypeScript", "Kubernetes", "GraphQL", "CI/CD", "AWS", "Redux", "Tailwind". NEVER group multiple skills into one entry (wrong: "CSS frameworks (Tailwind, Material UI)"). NEVER use parenthetical lists. One skill per item.
-- "matchedSkills": array of skills from "skills" that the candidate HAS (subset of "skills"). If no candidate profile provided, return empty array.
-- "missingSkills": array of skills from "skills" that the candidate is MISSING. If no candidate profile provided, return empty array.
-- "matchScore": integer 0-100 representing how well the candidate matches this role based on skills overlap and experience relevance. If no candidate profile, return 0.
-- "summary": 1-2 sentence personalized fit assessment. If no candidate profile, write a generic "ideal candidate" description.
-
-Return ONLY valid JSON, no markdown, no extra text.`;
 
 export async function POST(request: Request) {
-  try {
-    const body = (await request.json()) as AnalyzeJobRequest;
-    const {
-      jobDescription,
-      userProfile,
-      model: modelId = "gpt-4o-mini",
-    } = body;
+  const { user } = await getAuthClient();
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
-    if (!jobDescription?.trim()) {
+  const body = await safeJson<AnalyzeJobRequest>(request);
+  if (isErrorResponse(body)) return body;
+
+  try {
+    const jobDescription = sanitizeString(
+      body.jobDescription,
+      MAX_JOB_DESCRIPTION,
+    );
+    const userProfile = body.userProfile;
+    const modelId = sanitizeString(body.model, 100) || "gpt-4o-mini";
+
+    if (!jobDescription) {
       return new Response(
         JSON.stringify({ error: "Missing job description" }),
         { status: 400, headers: { "Content-Type": "application/json" } },
@@ -74,18 +83,18 @@ export async function POST(request: Request) {
 
     // ── Anthropic ─────────────────────────────────────────────────────────────
     if (modelDef.provider === "anthropic") {
-      const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+      const anthropic = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
 
       const message = await anthropic.messages.create({
         model: modelId,
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: ANALYZE_JOB_PROMPT,
         messages: [{ role: "user", content: userMessage }],
       });
 
       const text =
-        message.content[0].type === "text" ? message.content[0].text : "";
-      const parsed = JSON.parse(text) as AnalyzeJobResponse;
+        message.content[0]?.type === "text" ? message.content[0].text : "";
+      const parsed = parseAiJson<AnalyzeJobResponse>(text);
 
       return new Response(JSON.stringify(parsed), {
         headers: { "Content-Type": "application/json" },
@@ -93,28 +102,32 @@ export async function POST(request: Request) {
     }
 
     // ── OpenAI ────────────────────────────────────────────────────────────────
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
     const completion = await openai.chat.completions.create({
       model: modelId,
       response_format: { type: "json_object" },
       messages: [
-        { role: "system", content: SYSTEM_PROMPT },
+        { role: "system", content: ANALYZE_JOB_PROMPT },
         { role: "user", content: userMessage },
       ],
     });
 
     const text = completion.choices[0]?.message?.content ?? "{}";
-    const parsed = JSON.parse(text) as AnalyzeJobResponse;
+    const parsed = parseAiJson<AnalyzeJobResponse>(text);
 
     return new Response(JSON.stringify(parsed), {
       headers: { "Content-Type": "application/json" },
     });
   } catch (error) {
     console.error("Analyze job API error:", error);
-    return new Response(
-      JSON.stringify({ error: "Failed to analyze job description" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
-    );
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to analyze job description";
+    return new Response(JSON.stringify({ error: message }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 }

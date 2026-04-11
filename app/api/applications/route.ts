@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { isErrorResponse, MAX_SHORT_TEXT, safeJson, sanitizeString, sanitizeUrl } from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
 
 export async function GET() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -27,16 +24,12 @@ export async function GET() {
 }
 
 export async function POST(req: Request) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = (await req.json()) as {
+  const body = await safeJson<{
     position: string;
     company?: string;
     platform?: string;
@@ -45,26 +38,31 @@ export async function POST(req: Request) {
     notes?: string;
     applied_at?: string;
     resume_data?: Record<string, string>;
-  };
+  }>(req);
+  if (isErrorResponse(body)) return body;
 
-  if (!body.position?.trim()) {
+  const position = sanitizeString(body.position, 500);
+  if (!position) {
     return NextResponse.json(
       { error: "Position is required" },
       { status: 400 },
     );
   }
 
+  const VALID_STATUSES = ["applied", "interviewing", "offered", "rejected", "withdrawn"];
+  const status = VALID_STATUSES.includes(body.status ?? "") ? body.status! : "applied";
+
   const { data, error } = await supabase
     .from("applications")
     .insert({
       user_id: user.id,
-      position: body.position.trim(),
-      company: body.company?.trim() || null,
-      platform: body.platform?.trim() || null,
-      job_url: body.job_url?.trim() || null,
-      status: body.status || "applied",
+      position,
+      company: sanitizeString(body.company, 500) || null,
+      platform: sanitizeString(body.platform, 200) || null,
+      job_url: sanitizeUrl(body.job_url) || null,
+      status,
       resume_data: body.resume_data || null,
-      notes: body.notes?.trim() || null,
+      notes: sanitizeString(body.notes, MAX_SHORT_TEXT) || null,
       applied_at: body.applied_at || new Date().toISOString().split("T")[0],
     })
     .select()

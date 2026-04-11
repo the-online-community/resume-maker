@@ -1,23 +1,14 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { isErrorResponse, MAX_SHORT_TEXT, safeJson, sanitizeString } from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
 
 /** GET — check if the user has a pending quota request */
 export async function GET() {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   const { data: pending } = await supabase
     .from("quota_requests")
@@ -32,20 +23,10 @@ export async function GET() {
 
 /** POST — submit a quota increase request */
 export async function POST(request: Request) {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   // Check for existing pending request
   const { data: existing } = await supabase
@@ -63,8 +44,9 @@ export async function POST(request: Request) {
     );
   }
 
-  const body = await request.json();
-  const reason = (body.reason as string)?.trim() || "";
+  const body = await safeJson<{ reason?: string }>(request);
+  if (isErrorResponse(body)) return body;
+  const reason = sanitizeString(body.reason, MAX_SHORT_TEXT);
 
   const { error } = await supabase.from("quota_requests").insert({
     user_id: user.id,

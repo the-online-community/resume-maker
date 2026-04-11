@@ -11,19 +11,10 @@ import ResumePreview from "@/components/resume/resume-preview";
 import type { KeywordFix, ScoreResult } from "@/lib/score-types";
 import { TemplateSettingsDialog } from "@/components/resume/template-settings-dialog";
 import SignInButton from "@/components/sign-in-button";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/app-header";
+import { ModelSelector } from "@/components/model-selector";
 import { TrackApplicationDialog } from "@/components/track-application-dialog";
 import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuGroup,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { UserMenu } from "@/components/user-menu";
 import { useUndoHistory } from "@/hooks/use-undo-history";
 import { useUser } from "@/hooks/use-user";
 import { DEFAULT_MODEL_ID, MODELS } from "@/lib/models";
@@ -115,8 +106,24 @@ export default function Page() {
   const [skippedFixIds, setSkippedFixIds] = useState<Set<string>>(new Set());
   const [staleFixIds, setStaleFixIds] = useState<Set<string>>(new Set());
 
-  // Model selection
-  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
+  // Model selection — persisted in localStorage so it survives navigation/refresh
+  const [selectedModel, setSelectedModelState] = useState(DEFAULT_MODEL_ID);
+
+  // Load persisted model on mount
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const stored = localStorage.getItem("selected_model");
+    if (stored && MODELS.some((m) => m.id === stored)) {
+      setSelectedModelState(stored);
+    }
+  }, []);
+
+  const setSelectedModel = useCallback((modelId: string) => {
+    setSelectedModelState(modelId);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("selected_model", modelId);
+    }
+  }, []);
 
   // Template settings
   const [templateSettings, setTemplateSettings] =
@@ -332,6 +339,7 @@ export default function Page() {
           placeholders,
           jobDescription: jobDescriptionRef.current,
           requiredKeywords: jobAnalysis.skills,
+          model: selectedModel,
         }),
       });
 
@@ -353,7 +361,7 @@ export default function Page() {
       stopScoreProgress();
       setIsScoring(false);
     }
-  }, [placeholders, scoreResult, isScoring, stopScoreProgress, jobAnalysis]);
+  }, [placeholders, scoreResult, isScoring, stopScoreProgress, jobAnalysis, selectedModel]);
 
   const handleReanalyze = useCallback(() => {
     // Force re-fetch by clearing cached result
@@ -382,6 +390,7 @@ export default function Page() {
         placeholders,
         jobDescription: jobDescriptionRef.current,
         requiredKeywords: jobAnalysis.skills,
+        model: selectedModel,
       }),
     })
       .then((res) => {
@@ -403,13 +412,25 @@ export default function Page() {
         stopScoreProgress();
         setIsScoring(false);
       });
-  }, [placeholders, stopScoreProgress, jobAnalysis]);
+  }, [placeholders, stopScoreProgress, jobAnalysis, selectedModel]);
 
   const handleAcceptFix = useCallback(
     (fix: KeywordFix) => {
       if (!placeholders) return;
 
-      const sectionText = placeholders[fix.section];
+      const sectionText = placeholders[fix.section] || "";
+
+      // Append-style fix: just append the keyword to the section
+      if (fix.append) {
+        const trimmed = sectionText.trimEnd().replace(/[,.;]\s*$/, "");
+        const updated = trimmed
+          ? `${trimmed}, ${fix.append}`
+          : fix.append;
+        pushPlaceholders({ ...placeholders, [fix.section]: updated });
+        setAcceptedFixIds((prev) => new Set(prev).add(fix.id));
+        return;
+      }
+
       if (!sectionText) return;
 
       // Verify snippet still exists
@@ -430,6 +451,7 @@ export default function Page() {
           if (
             other.id !== fix.id &&
             other.section === fix.section &&
+            !other.append && // Append fixes are never stale
             !acceptedFixIds.has(other.id) &&
             !skippedFixIds.has(other.id)
           ) {
@@ -456,7 +478,18 @@ export default function Page() {
     for (const fix of scoreResult.fixes) {
       if (newAccepted.has(fix.id) || skippedFixIds.has(fix.id) || newStale.has(fix.id)) continue;
 
-      const sectionText = updatedPlaceholders[fix.section];
+      const sectionText = updatedPlaceholders[fix.section] || "";
+
+      // Append-style fix: append keyword to current section state
+      if (fix.append) {
+        const trimmed = sectionText.trimEnd().replace(/[,.;]\s*$/, "");
+        updatedPlaceholders[fix.section] = trimmed
+          ? `${trimmed}, ${fix.append}`
+          : fix.append;
+        newAccepted.add(fix.id);
+        continue;
+      }
+
       if (!sectionText || !sectionText.includes(fix.currentSnippet)) {
         newStale.add(fix.id);
         continue;
@@ -473,6 +506,7 @@ export default function Page() {
         if (
           other.id !== fix.id &&
           other.section === fix.section &&
+          !other.append && // Append fixes are never stale
           !newAccepted.has(other.id) &&
           !skippedFixIds.has(other.id) &&
           !newStale.has(other.id)
@@ -576,9 +610,16 @@ export default function Page() {
         if (res.ok) {
           const data = await res.json();
           setJobAnalysis(data);
+        } else {
+          const err = await res.json().catch(() => ({ error: "Unknown error" }));
+          console.error("Analyze job failed:", err);
+          toast.error(
+            `Job analysis failed: ${err.error || "Try a different model"}`,
+          );
         }
-      } catch {
-        // silently fail — analysis is non-critical
+      } catch (err) {
+        console.error("Analyze job error:", err);
+        toast.error("Job analysis failed — check console");
       } finally {
         setIsAnalyzingJob(false);
       }
@@ -845,46 +886,38 @@ export default function Page() {
     <>
       <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
         {/* Header */}
-        <div className="mb-6 flex items-center justify-between lg:mb-8">
-          <h1 className="font-mono text-lg font-bold sm:text-xl">
-            Resume Maker
-          </h1>
-          <div className="flex items-center gap-2">
-            {placeholders && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="text-muted-foreground text-xs"
-                onClick={() => {
-                  setPlaceholders(null);
-                  setResumeTitle("Resume");
-                  setHasJobDescription(false);
-                  jobDescriptionRef.current = "";
-                  editorResetRef.current?.();
-                  sessionStorage.removeItem("resume_cache");
-                  invalidateScore();
-                }}
-              >
-                Clear
-              </Button>
-            )}
-            <ModelSelector
-              selectedModelId={selectedModel}
-              onModelChange={setSelectedModel}
-            />
-            {user && (
-              <UserMenu
-                user={user}
-                usageCount={usageCount}
-                maxAttempts={maxAttempts}
-                isSubscribed={isSubscribed}
-                cancelAt={cancelAt}
-                resetsAt={resetsAt}
-              />
-            )}
-            <ThemeToggle />
-          </div>
-        </div>
+        <AppHeader
+          usage={{
+            usageCount,
+            maxAttempts,
+            isSubscribed,
+            cancelAt,
+            resetsAt,
+          }}
+        >
+          {placeholders && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-muted-foreground text-xs"
+              onClick={() => {
+                setPlaceholders(null);
+                setResumeTitle("Resume");
+                setHasJobDescription(false);
+                jobDescriptionRef.current = "";
+                editorResetRef.current?.();
+                sessionStorage.removeItem("resume_cache");
+                invalidateScore();
+              }}
+            >
+              Clear
+            </Button>
+          )}
+          <ModelSelector
+            selectedModelId={selectedModel}
+            onModelChange={setSelectedModel}
+          />
+        </AppHeader>
 
         <div className="flex flex-1 flex-col items-start gap-8 xl:flex-row">
           {/* Left panel */}
@@ -1208,72 +1241,6 @@ export default function Page() {
 }
 
 // ── Model Selector ────────────────────────────────────────────────────
-
-function ModelSelector({
-  selectedModelId,
-  onModelChange,
-}: {
-  selectedModelId: string;
-  onModelChange: (modelId: string) => void;
-}) {
-  const selectedModel =
-    MODELS.find((m) => m.id === selectedModelId) ?? MODELS[0];
-  const openaiModels = MODELS.filter((m) => m.provider === "openai");
-  const anthropicModels = MODELS.filter((m) => m.provider === "anthropic");
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="text-muted-foreground hover:text-foreground flex shrink-0 cursor-pointer items-center gap-1 text-xs transition-colors"
-        >
-          <span>{selectedModel.label}</span>
-          <svg
-            className="size-3"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-          >
-            <path d="m6 9 6 6 6-6" />
-          </svg>
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-auto min-w-40">
-        <DropdownMenuLabel>OpenAI</DropdownMenuLabel>
-        <DropdownMenuGroup>
-          {openaiModels.map((model) => (
-            <DropdownMenuItem
-              key={model.id}
-              onSelect={() => onModelChange(model.id)}
-            >
-              {model.label}
-              {model.id === selectedModelId && (
-                <span className="text-primary ml-auto">✓</span>
-              )}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-        <DropdownMenuSeparator />
-        <DropdownMenuLabel>Anthropic</DropdownMenuLabel>
-        <DropdownMenuGroup>
-          {anthropicModels.map((model) => (
-            <DropdownMenuItem
-              key={model.id}
-              onSelect={() => onModelChange(model.id)}
-            >
-              {model.label}
-              {model.id === selectedModelId && (
-                <span className="text-primary ml-auto">✓</span>
-              )}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
 
 // ── Limit Reached Banner ─────────────────────────────────────────────
 

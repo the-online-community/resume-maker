@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { checkCsrf, MAX_FILE_SIZE } from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
 
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const csrfError = checkCsrf(req);
+  if (csrfError) return csrfError;
 
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -24,6 +24,12 @@ export async function POST(
     const file = formData.get("file") as File | null;
     if (!file) {
       return NextResponse.json({ error: "No file provided" }, { status: 400 });
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json({ error: "File too large (max 10 MB)" }, { status: 413 });
+    }
+    if (file.type && file.type !== "application/pdf") {
+      return NextResponse.json({ error: "Only PDF files are allowed" }, { status: 400 });
     }
     fileBuffer = await file.arrayBuffer();
   } catch {

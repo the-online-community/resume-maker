@@ -1,5 +1,18 @@
 import OpenAI from "openai";
 
+import { OPENAI_API_KEY } from "@/lib/env.server";
+import { buildEditSectionFullPrompt, buildEditSectionPartialPrompt } from "@/lib/prompts";
+
+import {
+  isErrorResponse,
+  MAX_JOB_DESCRIPTION,
+  MAX_RESUME_TEXT,
+  MAX_SHORT_TEXT,
+  safeJson,
+  sanitizeString,
+} from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
+
 interface EditSectionRequest {
   sectionKey: string;
   currentContent: string;
@@ -9,15 +22,23 @@ interface EditSectionRequest {
 }
 
 export async function POST(request: Request) {
+  const { user } = await getAuthClient();
+  if (!user) {
+    return new Response(JSON.stringify({ error: "Unauthorized" }), {
+      status: 401,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  const parsed = await safeJson<EditSectionRequest>(request);
+  if (isErrorResponse(parsed)) return parsed;
+
   try {
-    const body = (await request.json()) as EditSectionRequest;
-    const {
-      sectionKey,
-      currentContent,
-      userInstruction,
-      selectedText,
-      jobDescription,
-    } = body;
+    const sectionKey = sanitizeString(parsed.sectionKey, 100);
+    const currentContent = sanitizeString(parsed.currentContent, MAX_RESUME_TEXT);
+    const userInstruction = sanitizeString(parsed.userInstruction, MAX_SHORT_TEXT);
+    const selectedText = parsed.selectedText ? sanitizeString(parsed.selectedText, MAX_RESUME_TEXT) : undefined;
+    const jobDescription = parsed.jobDescription ? sanitizeString(parsed.jobDescription, MAX_JOB_DESCRIPTION) : undefined;
 
     if (!sectionKey || !currentContent || !userInstruction) {
       return new Response(
@@ -26,32 +47,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+    const openai = new OpenAI({ apiKey: OPENAI_API_KEY });
 
     const isPartialEdit = !!selectedText;
 
     const systemPrompt = isPartialEdit
-      ? `You are a surgical resume editor. The user has selected a specific portion of text within their resume's ${sectionKey} section and wants you to edit ONLY that selected text.
-
-CRITICAL RULES:
-- Output ONLY the replacement text for the selected portion — NOT the full section.
-- The output will be swapped in place of the selected text, so it must fit naturally in context.
-- Apply the user's instruction to transform the selected text.
-- Maintain the same formatting conventions (bullet points, line breaks, spacing) as the selected text.
-- Do NOT fabricate skills, experiences, or qualifications not present in the original.
-- Do NOT include any explanation, commentary, or surrounding context — output ONLY the replacement text.
-- Keep a similar length unless the instruction explicitly asks to expand or shorten.`
-      : `You are a surgical resume editor. The user wants a TARGETED edit to their resume's ${sectionKey} section.
-
-CRITICAL RULES:
-- You MUST output the COMPLETE section — every single entry, line, and bullet point that currently exists.
-- ONLY modify the specific part the user's instruction refers to. Leave everything else EXACTLY as-is, word for word.
-- For example, if the user says "add a bullet point to the second job", you must keep job 1, job 3, and all other jobs completely unchanged. Only the second job gets the new bullet point.
-- NEVER drop, remove, summarize, or omit any existing content unless the user explicitly asks you to remove something.
-- Do NOT fabricate skills, experiences, or qualifications not present in the original.
-- Do NOT include any explanation or commentary — output the full section text only.
-- Maintain the exact same formatting conventions (bullet points, line breaks, spacing).
-- If a job description is provided, use it as context but still preserve all existing content.`;
+      ? buildEditSectionPartialPrompt(sectionKey)
+      : buildEditSectionFullPrompt(sectionKey);
 
     const userMessage = isPartialEdit
       ? `FULL SECTION (for context only — do NOT output this):\n${currentContent}\n\nSELECTED TEXT TO REPLACE:\n"${selectedText}"\n\nINSTRUCTION: ${userInstruction}${jobDescription ? `\n\nJOB DESCRIPTION (for context):\n${jobDescription}` : ""}\n\nOutput ONLY the replacement for the selected text, nothing else.`

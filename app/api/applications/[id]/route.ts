@@ -1,39 +1,37 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { isErrorResponse, MAX_SHORT_TEXT, safeJson, sanitizeString, sanitizeUrl } from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
 
 export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const { id } = await params;
-  const body = (await req.json()) as Record<string, unknown>;
+  const body = await safeJson<Record<string, unknown>>(req);
+  if (isErrorResponse(body)) return body;
 
-  // Only allow updating specific fields
-  const allowed = [
-    "position",
-    "company",
-    "platform",
-    "job_url",
-    "status",
-    "resume_data",
-    "resume_url",
-    "notes",
-    "applied_at",
-  ];
+  // Only allow updating specific fields, with sanitization per type
+  const sanitizers: Record<string, (v: unknown) => unknown> = {
+    position: (v) => sanitizeString(v, 500),
+    company: (v) => sanitizeString(v, 500) || null,
+    platform: (v) => sanitizeString(v, 200) || null,
+    job_url: (v) => sanitizeUrl(v) || null,
+    status: (v) => sanitizeString(v, 50),
+    resume_data: (v) => v, // structured object, passed through
+    resume_url: (v) => sanitizeUrl(v) || null,
+    notes: (v) => sanitizeString(v, MAX_SHORT_TEXT) || null,
+    applied_at: (v) => sanitizeString(v, 20),
+  };
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
-  for (const key of allowed) {
+  for (const key of Object.keys(sanitizers)) {
     if (key in body) {
-      updates[key] = body[key];
+      updates[key] = sanitizers[key](body[key]);
     }
   }
 
@@ -56,11 +54,7 @@ export async function DELETE(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,26 +1,18 @@
 import { nanoid } from "nanoid";
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { isErrorResponse, safeJson, sanitizeString } from "@/lib/api/sanitize";
+import { NEXT_PUBLIC_APP_URL } from "@/lib/env";
+import { getAuthClient } from "@/lib/supabase/server";
 
 const BONUS_PER_REFERRAL = 5;
 
 /** GET — return the user's referral code and stats (creates code if needed) */
 export async function GET() {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   // Check for existing referral row with a code for this user
   const { data: existing } = await supabase
@@ -59,7 +51,8 @@ export async function GET() {
     ? existing.filter((r) => r.bonus_granted).length * BONUS_PER_REFERRAL
     : 0;
 
-  const origin = process.env.NEXT_PUBLIC_APP_URL || "https://resumemaker.cc";
+  const origin =
+    NEXT_PUBLIC_APP_URL;
   const referralUrl = `${origin}?ref=${code}`;
 
   return NextResponse.json({
@@ -72,27 +65,21 @@ export async function GET() {
 
 /** POST — process a referral code (called after signup) */
 export async function POST(request: Request) {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await request.json();
-  const code = (body.code as string)?.trim();
+  const body = await safeJson<{ code?: string }>(request);
+  if (isErrorResponse(body)) return body;
+  const code = sanitizeString(body.code, 50);
 
   if (!code) {
-    return NextResponse.json({ error: "Missing referral code" }, { status: 400 });
+    return NextResponse.json(
+      { error: "Missing referral code" },
+      { status: 400 },
+    );
   }
-
-  const supabase = await createClient();
 
   // Find the referral row
   const { data: referral } = await supabase
@@ -152,12 +139,15 @@ export async function POST(request: Request) {
       })
       .eq("user_id", referral.referrer_id);
   } else {
-    await supabase.from("usage").upsert({
-      user_id: referral.referrer_id,
-      count: 0,
-      bonus_credits: BONUS_PER_REFERRAL,
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "user_id" });
+    await supabase.from("usage").upsert(
+      {
+        user_id: referral.referrer_id,
+        count: 0,
+        bonus_credits: BONUS_PER_REFERRAL,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "user_id" },
+    );
   }
 
   // Create a new pending referral row for the referrer so they can keep inviting

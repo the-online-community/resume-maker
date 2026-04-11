@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { stripe } from "@/lib/stripe";
-import { createClient } from "@/lib/supabase/server";
+import { NEXT_PUBLIC_STRIPE_PRICE_ID } from "@/lib/env";
+import { getAuthClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const origin = new URL(request.url).origin;
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -35,7 +32,7 @@ export async function POST(request: Request) {
     customer: customerId,
     mode: "subscription",
     line_items: [
-      { price: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID!, quantity: 1 },
+      { price: NEXT_PUBLIC_STRIPE_PRICE_ID, quantity: 1 },
     ],
     success_url: `${origin}/?upgraded=true`,
     cancel_url: `${origin}/`,

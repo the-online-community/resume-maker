@@ -5,7 +5,7 @@ import Link from "next/link";
 
 import { FRAME_WIDTH } from "@/components/resume/constants";
 import { ResumeContent } from "@/components/resume/resume-content";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { AppHeader } from "@/components/app-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -260,7 +260,7 @@ function ResumePreviewDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-3xl">
+      <DialogContent className="flex h-[85vh] flex-col sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>
             Resume — {app.position}
@@ -279,11 +279,11 @@ function ResumePreviewDialog({
 
         {/* Resume JSON preview */}
         {hasData && (
-          <div className="overflow-hidden rounded border">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border">
             <div className="bg-muted/50 text-muted-foreground border-b px-3 py-1.5 text-[11px] font-medium">
               Generated Resume
             </div>
-            <div className="overflow-auto bg-white" style={{ maxHeight: 500 }}>
+            <div className="min-h-0 flex-1 overflow-auto bg-white">
               <div
                 className="resume-page origin-top-left"
                 style={{
@@ -302,7 +302,7 @@ function ResumePreviewDialog({
 
         {/* PDF preview */}
         {hasUrl && (
-          <div className="overflow-hidden rounded border">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded border">
             <div className="bg-muted/50 text-muted-foreground flex items-center justify-between border-b px-3 py-1.5 text-[11px] font-medium">
               <span>Uploaded PDF</span>
               <a
@@ -316,15 +316,14 @@ function ResumePreviewDialog({
             </div>
             <iframe
               src={app.resume_url!}
-              className="w-full border-0"
-              style={{ height: 500 }}
+              className="min-h-0 w-full flex-1 border-0"
               title="Resume PDF"
             />
           </div>
         )}
 
         {/* Upload section */}
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex shrink-0 items-center gap-2 pt-1">
           <input
             ref={fileInputRef}
             type="file"
@@ -762,10 +761,7 @@ export default function ApplicationsPage() {
   if (authLoading || loading) {
     return (
       <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
-        <div className="flex items-center justify-between">
-          <h1 className="font-mono text-lg font-bold">My Applications</h1>
-          <ThemeToggle />
-        </div>
+        <AppHeader />
         <div className="mt-6 overflow-x-auto rounded border">
           <table className="w-full text-xs">
             <thead>
@@ -808,29 +804,22 @@ export default function ApplicationsPage() {
   return (
     <div className="container mx-auto flex flex-1 flex-col px-4 pt-6 pb-12">
       {/* Header */}
-      <div className="mb-6 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <Link
-            href="/"
-            className="text-muted-foreground hover:text-foreground text-sm transition-colors"
-          >
-            ← Back
-          </Link>
-          <h1 className="font-mono text-lg font-bold">My Applications</h1>
-          <Badge variant="outline" className="font-mono text-[10px]">
-            {applications.length}
-          </Badge>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            onClick={() => setShowAddRow(true)}
-            disabled={showAddRow}
-          >
-            + Add Application
-          </Button>
-          <ThemeToggle />
-        </div>
+      <AppHeader>
+        <Button
+          size="sm"
+          onClick={() => setShowAddRow(true)}
+          disabled={showAddRow}
+        >
+          + Add Application
+        </Button>
+      </AppHeader>
+
+      {/* Page heading */}
+      <div className="mb-6 flex items-center gap-3">
+        <h2 className="text-lg font-semibold">My Applications</h2>
+        <Badge variant="outline" className="font-mono text-[10px]">
+          {applications.length}
+        </Badge>
       </div>
 
       {/* Analytics */}

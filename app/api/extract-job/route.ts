@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 
+import { isErrorResponse, safeJson, sanitizeUrl } from "@/lib/api/sanitize";
+import { getAuthClient } from "@/lib/supabase/server";
+
 /**
  * POST /api/extract-job
  * Fetches a LinkedIn job URL and extracts the job description as plain text.
@@ -35,10 +38,18 @@ function normalizeLinkedInUrl(raw: string): string | null {
 }
 
 export async function POST(req: Request) {
+  const { user } = await getAuthClient();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const parsed = await safeJson<{ url?: string }>(req);
+  if (isErrorResponse(parsed)) return parsed;
+
   try {
-    const { url } = (await req.json()) as { url?: string };
-    if (!url || typeof url !== "string") {
-      return NextResponse.json({ error: "url is required" }, { status: 400 });
+    const url = sanitizeUrl(parsed.url);
+    if (!url) {
+      return NextResponse.json({ error: "A valid URL is required" }, { status: 400 });
     }
 
     const jobUrl = normalizeLinkedInUrl(url);

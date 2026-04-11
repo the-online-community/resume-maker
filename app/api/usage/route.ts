@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { createClient } from "@/lib/supabase/server";
+import { getAuthClient } from "@/lib/supabase/server";
 
 /** Get UTC midnight for today (start of current day) */
 function getUtcMidnightToday(): Date {
@@ -17,20 +17,10 @@ function getNextResetTime(): string {
 
 /** GET — return the current usage count, dynamic limits, and subscription status */
 export async function GET() {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   const { data } = await supabase
     .from("usage")
@@ -79,20 +69,10 @@ export async function GET() {
 
 /** POST — increment usage count (called after a successful tailor) */
 export async function POST() {
-  let user;
-  try {
-    const supabase = await createClient();
-    const { data } = await supabase.auth.getUser();
-    user = data.user;
-  } catch {
-    return NextResponse.json({ error: "Auth error" }, { status: 500 });
-  }
-
+  const { supabase, user } = await getAuthClient();
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const supabase = await createClient();
 
   // Check if user has active subscription
   const { data: subscription } = await supabase

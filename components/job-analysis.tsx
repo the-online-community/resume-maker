@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -84,13 +84,17 @@ export function JobAnalysisPanel({
   addedSkills,
 }: JobAnalysisProps) {
   const [collapsed, setCollapsed] = useState(false);
-  const prevAnalysisRef = useRef<JobAnalysis | null>(null);
+  const [prevAnalysis, setPrevAnalysis] = useState<JobAnalysis | null>(null);
 
-  // Auto-expand when new analysis arrives + notify parent
+  // Auto-expand when new analysis arrives (state adjustment during render)
+  if (analysis && analysis !== prevAnalysis) {
+    setPrevAnalysis(analysis);
+    setCollapsed(false);
+  }
+
+  // Notify parent when analysis changes
   useEffect(() => {
-    if (analysis && analysis !== prevAnalysisRef.current) {
-      setCollapsed(false);
-      prevAnalysisRef.current = analysis;
+    if (analysis) {
       onReady?.();
     }
   }, [analysis, onReady]);
@@ -183,11 +187,11 @@ export function JobAnalysisPanel({
                   <SkeletonPulse className="h-3 w-1/2" />
                 </div>
                 <div className="flex flex-wrap gap-1.5">
-                  {Array.from({ length: 8 }).map((_, i) => (
+                  {[76, 92, 64, 85, 70, 98, 68, 80].map((w, i) => (
                     <SkeletonPulse
                       key={i}
                       className="h-5 rounded-full"
-                      style={{ width: `${60 + Math.random() * 40}px` } as React.CSSProperties}
+                      style={{ width: `${w}px` } as React.CSSProperties}
                     />
                   ))}
                 </div>

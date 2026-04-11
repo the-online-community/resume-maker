@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { useCallback, useEffect, useState } from "react";
 import type { User } from "@supabase/supabase-js";
+import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -144,7 +144,7 @@ export function UserMenu({
           {/* Subscription badge or usage progress */}
           <div className="hidden sm:block">
             {isSubscribed ? (
-              <p className="text-[10px] font-semibold leading-none text-violet-500">
+              <p className="text-[10px] leading-none font-semibold text-violet-500">
                 Pro
               </p>
             ) : (
@@ -175,8 +175,7 @@ export function UserMenu({
           {isSubscribed ? (
             <div className="space-y-1">
               <p className="text-xs font-medium">
-                Pro Plan{" "}
-                <span className="text-violet-500">· $5/mo</span>
+                Pro Plan <span className="text-violet-500">· $5/mo</span>
               </p>
               {cancelAt ? (
                 <p className="text-[11px] text-amber-500">
@@ -218,7 +217,7 @@ export function UserMenu({
               {showRequestForm && (
                 <div className="mt-2 space-y-2">
                   <textarea
-                    className="border-input bg-background w-full border px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-primary"
+                    className="border-input bg-background focus:ring-primary w-full border px-2 py-1.5 text-xs outline-none focus:ring-1"
                     placeholder="Why do you need more? (optional)"
                     rows={2}
                     value={requestReason}
@@ -255,7 +254,9 @@ export function UserMenu({
                   className="text-primary cursor-pointer text-[11px] hover:underline"
                   onClick={handleShowReferral}
                 >
-                  {showReferral ? "Hide referral link" : "Invite a friend (+5/day)"}
+                  {showReferral
+                    ? "Hide referral link"
+                    : "Invite a friend (+5/day)"}
                 </button>
 
                 {showReferral && (
@@ -263,7 +264,9 @@ export function UserMenu({
                     {referralLoading ? (
                       <div className="flex items-center gap-1.5">
                         <div className="border-primary size-3 animate-spin rounded-full border-2 border-t-transparent" />
-                        <span className="text-muted-foreground text-[10px]">Loading...</span>
+                        <span className="text-muted-foreground text-[10px]">
+                          Loading...
+                        </span>
                       </div>
                     ) : referralData ? (
                       <>
@@ -284,11 +287,14 @@ export function UserMenu({
                           </Button>
                         </div>
                         <p className="text-muted-foreground text-[10px]">
-                          Share this link. When someone signs up, you get +5 resumes/day.
+                          Share this link. When someone signs up, you get +5
+                          resumes/day.
                         </p>
                         {referralData.completedCount > 0 && (
                           <p className="text-[10px] font-medium text-green-600">
-                            {referralData.completedCount} referral{referralData.completedCount !== 1 ? "s" : ""} · +{referralData.bonusEarned}/day earned
+                            {referralData.completedCount} referral
+                            {referralData.completedCount !== 1 ? "s" : ""} · +
+                            {referralData.bonusEarned}/day earned
                           </p>
                         )}
                       </>

@@ -82,6 +82,7 @@ export interface UserProfile {
   projects: ProjectEntry[];
   certifications: CertificationEntry[];
   languages: LanguageEntry[];
+  master_resume?: string;
   onboarding_complete?: boolean;
 }
 

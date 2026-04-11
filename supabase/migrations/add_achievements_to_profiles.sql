@@ -1,6 +1,4 @@
--- Add achievements column to existing profiles table
--- Shape: [{ id, description, impact, technologies, context, source }]
--- source is one of: "manual", "ai-import", "resume-import"
+-- Drop unused achievements column from profiles table
+-- The achievement field lives inside the education JSONB array, not as a top-level column
 
-ALTER TABLE profiles
-  ADD COLUMN IF NOT EXISTS achievements JSONB DEFAULT '[]'::jsonb;
+ALTER TABLE profiles DROP COLUMN IF EXISTS achievements;

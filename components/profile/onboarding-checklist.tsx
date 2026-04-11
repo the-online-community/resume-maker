@@ -43,33 +43,39 @@ export function OnboardingChecklist({
     new Set(steps.filter((s) => s.completed).map((s) => s.id)),
   );
 
-  // Auto-switch to next tab when a step completes
+  // Auto-switch to next tab when a SINGLE step completes (user just filled
+  // in one section). When multiple steps complete at once (bulk import), we
+  // stay on the current page — navigating away mid-import is disruptive.
   useEffect(() => {
     const prevCompleted = prevCompletedRef.current;
     const nowCompleted = new Set(
       steps.filter((s) => s.completed).map((s) => s.id),
     );
 
-    // Find a step that just became completed
-    let justCompleted = false;
+    // Count how many steps just became completed
+    let newlyCompleted = 0;
     for (const id of nowCompleted) {
       if (!prevCompleted.has(id)) {
-        justCompleted = true;
-        break;
+        newlyCompleted++;
       }
     }
 
     prevCompletedRef.current = nowCompleted;
 
-    if (justCompleted) {
-      // Find the first incomplete data step
+    if (newlyCompleted === 0) return;
+
+    // Check if all data steps are now done
+    if (dataSteps.every((s) => s.completed)) {
+      onComplete();
+      return;
+    }
+
+    // Only auto-navigate when a single step completed (manual editing),
+    // not when many steps complete at once (resume import).
+    if (newlyCompleted === 1) {
       const nextStep = dataSteps.find((s) => !s.completed);
       if (nextStep?.targetTab && nextStep.targetTab !== activeTab) {
         onTabChange(nextStep.targetTab);
-      }
-      // Check if all data steps are now done
-      if (dataSteps.every((s) => s.completed)) {
-        onComplete();
       }
     }
   }, [steps, dataSteps, activeTab, onTabChange, onComplete]);

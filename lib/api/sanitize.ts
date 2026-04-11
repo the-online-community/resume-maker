@@ -77,6 +77,7 @@ const ALLOWED_ORIGINS = new Set([
   NEXT_PUBLIC_APP_URL,
   "http://localhost:3000",
   "http://localhost:3001",
+  "https://resume-maker.collegeofdawn.com",
 ].filter(Boolean));
 
 /**

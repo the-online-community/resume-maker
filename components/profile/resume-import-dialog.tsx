@@ -360,10 +360,22 @@ export function ResumeImportDialog({
     }
   }, []);
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!preview) return;
     const updated = applyImportToDraft(draft, preview);
     onChange(updated);
+
+    // Persist to the database immediately so the data survives navigation
+    try {
+      await fetch("/api/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updated),
+      });
+    } catch {
+      // State is updated even if save fails; user can manually save later
+    }
+
     setPreview(null);
     onOpenChange(false);
   };

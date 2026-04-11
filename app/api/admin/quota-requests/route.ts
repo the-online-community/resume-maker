@@ -91,19 +91,24 @@ export async function PATCH(request: Request) {
   if (action === "approve") {
     const { data: usage } = await adminClient
       .from("usage")
-      .select("bonus_credits")
+      .select("count, daily_limit, bonus_credits")
       .eq("user_id", qr.user_id)
       .single();
 
+    const currentCount = usage?.count ?? 0;
+    const currentLimit = usage?.daily_limit ?? 5;
     const currentBonus = usage?.bonus_credits ?? 0;
 
-    await adminClient
-      .from("usage")
-      .upsert({
+    await adminClient.from("usage").upsert(
+      {
         user_id: qr.user_id,
+        count: currentCount,
+        daily_limit: currentLimit,
         bonus_credits: currentBonus + bonusCredits,
         updated_at: new Date().toISOString(),
-      });
+      },
+      { onConflict: "user_id" },
+    );
   }
 
   return NextResponse.json({ success: true, action });

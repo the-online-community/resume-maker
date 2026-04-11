@@ -26,8 +26,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No files provided" }, { status: 400 });
     }
 
-    if (files.length > 5) {
-      return NextResponse.json({ error: "Too many files (max 5)" }, { status: 400 });
+    if (files.length > 10) {
+      return NextResponse.json({ error: "Too many files (max 10)" }, { status: 400 });
     }
 
     for (const file of files) {

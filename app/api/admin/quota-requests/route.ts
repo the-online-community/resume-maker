@@ -58,7 +58,7 @@ export async function PATCH(request: Request) {
   }>(request);
   if (isErrorResponse(body)) return body;
 
-  const { id, action, bonusCredits = 10 } = body;
+  const { id, action, bonusCredits = 5 } = body;
   const requestId = sanitizeString(id, 100);
   if (!requestId || !["approve", "deny"].includes(action)) {
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
@@ -81,10 +81,13 @@ export async function PATCH(request: Request) {
     );
   }
 
-  // Update status
+  // Update status (store granted credits for approved requests)
   await adminClient
     .from("quota_requests")
-    .update({ status: action === "approve" ? "approved" : "denied" })
+    .update({
+      status: action === "approve" ? "approved" : "denied",
+      ...(action === "approve" ? { granted_credits: bonusCredits } : {}),
+    })
     .eq("id", requestId);
 
   // On approve, grant bonus credits

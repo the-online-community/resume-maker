@@ -22,6 +22,7 @@ interface QuotaRequest {
   user_email: string;
   reason: string;
   status: string;
+  granted_credits: number | null;
   created_at: string;
 }
 
@@ -51,7 +52,7 @@ export default function AdminQuotaRequestsPage() {
   ) => {
     setProcessing(id);
     try {
-      const bonusCredits = Number(bonusInputs[id] || "10") || 10;
+      const bonusCredits = Number(bonusInputs[id] || "5") || 5;
       const res = await fetch("/api/admin/quota-requests", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -96,7 +97,14 @@ export default function AdminQuotaRequestsPage() {
                       <TableHead className="text-right">Actions</TableHead>
                     </>
                   )}
-                  {status !== "pending" && <TableHead>Status</TableHead>}
+                  {status !== "pending" && (
+                    <>
+                      <TableHead>Status</TableHead>
+                      {status === "approved" && (
+                        <TableHead className="text-center">Credits Given</TableHead>
+                      )}
+                    </>
+                  )}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -118,7 +126,7 @@ export default function AdminQuotaRequestsPage() {
                             type="number"
                             min={1}
                             max={100}
-                            value={bonusInputs[r.id] ?? "10"}
+                            value={bonusInputs[r.id] ?? "5"}
                             onChange={(e) =>
                               setBonusInputs((prev) => ({
                                 ...prev,
@@ -150,22 +158,29 @@ export default function AdminQuotaRequestsPage() {
                       </>
                     )}
                     {status !== "pending" && (
-                      <TableCell>
-                        <Badge
-                          variant={
-                            r.status === "approved" ? "default" : "secondary"
-                          }
-                        >
-                          {r.status}
-                        </Badge>
-                      </TableCell>
+                      <>
+                        <TableCell>
+                          <Badge
+                            variant={
+                              r.status === "approved" ? "default" : "secondary"
+                            }
+                          >
+                            {r.status}
+                          </Badge>
+                        </TableCell>
+                        {status === "approved" && (
+                          <TableCell className="text-center tabular-nums font-medium">
+                            {r.granted_credits != null ? `+${r.granted_credits}` : "—"}
+                          </TableCell>
+                        )}
+                      </>
                     )}
                   </TableRow>
                 ))}
                 {requests.length === 0 && (
                   <TableRow>
                     <TableCell
-                      colSpan={status === "pending" ? 5 : 4}
+                      colSpan={status === "pending" ? 5 : status === "approved" ? 5 : 4}
                       className="text-muted-foreground py-8 text-center"
                     >
                       No {status} requests

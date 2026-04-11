@@ -5,6 +5,7 @@ import { parseAiJson } from "@/lib/ai-json";
 import { MODELS } from "@/lib/models";
 import { flattenSkills, type UserProfile } from "@/lib/profile";
 import { MASTER_RESUME_PROMPT } from "@/lib/prompts";
+import { rateLimitResponse } from "@/lib/rate-limit";
 import { getAuthClient } from "@/lib/supabase/server";
 
 export const maxDuration = 60;
@@ -118,6 +119,9 @@ export async function POST(request: Request) {
         headers: { "Content-Type": "application/json" },
       });
     }
+
+    const blocked = rateLimitResponse(user.id);
+    if (blocked) return blocked;
 
     const body = await request.json();
     const { profile, model: modelId = "gpt-4o" } = body as {

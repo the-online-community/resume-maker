@@ -3,6 +3,7 @@ import OpenAI from "openai";
 
 import { parseAiJson } from "@/lib/ai-json";
 import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
+import { rateLimitResponse } from "@/lib/rate-limit";
 import {
   isErrorResponse,
   MAX_JOB_DESCRIPTION,
@@ -58,6 +59,9 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const blocked = rateLimitResponse(user.id);
+  if (blocked) return blocked;
 
   const body = await safeJson<AnalyzeJobRequest>(request);
   if (isErrorResponse(body)) return body;

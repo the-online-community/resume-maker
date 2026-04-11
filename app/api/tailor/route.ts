@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import OpenAI from "openai";
 
 import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
+import { rateLimitResponse } from "@/lib/rate-limit";
 import {
   isErrorResponse,
   MAX_JOB_DESCRIPTION,
@@ -169,6 +170,9 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const blocked = rateLimitResponse(user.id);
+  if (blocked) return blocked;
 
   const parsed = await safeJson<TailorRequest>(request);
   if (isErrorResponse(parsed)) return parsed;

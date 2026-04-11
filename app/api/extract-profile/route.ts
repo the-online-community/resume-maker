@@ -5,6 +5,7 @@ import { parseAiJson } from "@/lib/ai-json";
 import { isErrorResponse, MAX_RESUME_TEXT, safeJson, sanitizeString } from "@/lib/api/sanitize";
 import { ANTHROPIC_API_KEY, OPENAI_API_KEY } from "@/lib/env.server";
 import { MODELS } from "@/lib/models";
+import { rateLimitResponse } from "@/lib/rate-limit";
 import { EXTRACT_PROFILE_PROMPT } from "@/lib/prompts";
 import { getAuthClient } from "@/lib/supabase/server";
 
@@ -22,6 +23,9 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const blocked = rateLimitResponse(user.id);
+  if (blocked) return blocked;
 
   const body = await safeJson<ExtractProfileRequest>(request);
   if (isErrorResponse(body)) return body;

@@ -40,6 +40,12 @@ export default function MasterResumePage() {
         }),
       });
 
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        const seconds = data.retryAfter ?? "a few";
+        toast.error(`Too many requests — try again in ${seconds}s`);
+        return;
+      }
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.error || "Failed to generate");

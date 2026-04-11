@@ -247,61 +247,7 @@ export function UserMenu({
                 </div>
               )}
 
-              {/* Invite a Friend */}
-              <div className="pt-1">
-                <button
-                  type="button"
-                  className="text-primary cursor-pointer text-[11px] hover:underline"
-                  onClick={handleShowReferral}
-                >
-                  {showReferral
-                    ? "Hide referral link"
-                    : "Invite a friend (+5/day)"}
-                </button>
-
-                {showReferral && (
-                  <div className="mt-2 space-y-2">
-                    {referralLoading ? (
-                      <div className="flex items-center gap-1.5">
-                        <div className="border-primary size-3 animate-spin rounded-full border-2 border-t-transparent" />
-                        <span className="text-muted-foreground text-[10px]">
-                          Loading...
-                        </span>
-                      </div>
-                    ) : referralData ? (
-                      <>
-                        <div className="flex items-center gap-1.5">
-                          <input
-                            type="text"
-                            readOnly
-                            value={referralData.referralUrl}
-                            className="border-input bg-muted flex-1 border px-2 py-1 text-[10px]"
-                          />
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            className="h-6 shrink-0 text-[10px]"
-                            onClick={handleCopyReferral}
-                          >
-                            {copied ? "Copied!" : "Copy"}
-                          </Button>
-                        </div>
-                        <p className="text-muted-foreground text-[10px]">
-                          Share this link. When someone signs up, you get +5
-                          resumes/day.
-                        </p>
-                        {referralData.completedCount > 0 && (
-                          <p className="text-[10px] font-medium text-green-600">
-                            {referralData.completedCount} referral
-                            {referralData.completedCount !== 1 ? "s" : ""} · +
-                            {referralData.bonusEarned}/day earned
-                          </p>
-                        )}
-                      </>
-                    ) : null}
-                  </div>
-                )}
-              </div>
+              {/* Invite a Friend — hidden until abuse prevention is implemented */}
             </div>
           )}
         </div>

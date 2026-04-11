@@ -31,6 +31,17 @@ const TextEditor = dynamic(() => import("@/components/text-editor"), {
   ssr: false,
 });
 
+/** Check a fetch response for 429 rate-limit and show a toast. Returns true if rate-limited. */
+async function handleRateLimit(res: Response): Promise<boolean> {
+  if (res.status === 429) {
+    const data = await res.json().catch(() => ({}));
+    const seconds = data.retryAfter ?? res.headers.get("Retry-After") ?? "a few";
+    toast.error(`Too many requests — try again in ${seconds}s`);
+    return true;
+  }
+  return false;
+}
+
 export default function Page() {
   const { user, loading: authLoading } = useUser();
   const router = useRouter();
@@ -343,6 +354,7 @@ export default function Page() {
         }),
       });
 
+      if (await handleRateLimit(res)) return;
       if (!res.ok) throw new Error("Analysis failed");
 
       const data = (await res.json()) as ScoreResult;
@@ -393,11 +405,13 @@ export default function Page() {
         model: selectedModel,
       }),
     })
-      .then((res) => {
+      .then(async (res) => {
+        if (await handleRateLimit(res)) return null;
         if (!res.ok) throw new Error("Analysis failed");
         return res.json();
       })
-      .then((data: ScoreResult) => {
+      .then((data: ScoreResult | null) => {
+        if (!data) return;
         setScoreProgress(100);
         setScoreResult(data);
         sessionStorage.setItem(
@@ -607,7 +621,9 @@ export default function Page() {
             model: selectedModel,
           }),
         });
-        if (res.ok) {
+        if (await handleRateLimit(res)) {
+          // rate-limited — toast already shown
+        } else if (res.ok) {
           const data = await res.json();
           setJobAnalysis(data);
         } else {
@@ -706,6 +722,10 @@ export default function Page() {
           }),
         });
 
+        if (await handleRateLimit(tailorRes)) {
+          setIsLoading(false);
+          return;
+        }
         if (!tailorRes.ok) {
           throw new Error("Failed to tailor resume");
         }

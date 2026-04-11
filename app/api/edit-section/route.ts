@@ -2,6 +2,7 @@ import OpenAI from "openai";
 
 import { OPENAI_API_KEY } from "@/lib/env.server";
 import { buildEditSectionFullPrompt, buildEditSectionPartialPrompt } from "@/lib/prompts";
+import { rateLimitResponse } from "@/lib/rate-limit";
 
 import {
   isErrorResponse,
@@ -29,6 +30,9 @@ export async function POST(request: Request) {
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  const blocked = rateLimitResponse(user.id);
+  if (blocked) return blocked;
 
   const parsed = await safeJson<EditSectionRequest>(request);
   if (isErrorResponse(parsed)) return parsed;

@@ -64,14 +64,16 @@ function experienceToHtml(
   return blocks
     .map((lines) => {
       const inner = lines
-        .map((line, i) => {
+        .map((line) => {
           const trimmed = line.trim();
           const isBullet = /^[•\-—*]/.test(trimmed);
           if (isBullet) {
             const content = trimmed.replace(/^[•\-—*]\s*/, `${bulletChar} `);
             return `<div>${escapeHtml(content)}</div>`;
           }
-          if (i === 0 && boldLabels) {
+          // Non-bullet lines are role headers (e.g. "Title | Company | Location | Dates")
+          // Bold them all so role headers are consistent regardless of blank-line separators.
+          if (boldLabels) {
             return `<div style="font-weight:600">${escapeHtml(line)}</div>`;
           }
           return `<div>${escapeHtml(line)}</div>`;

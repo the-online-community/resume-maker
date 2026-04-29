@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 
@@ -21,6 +21,21 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Resume Maker",
   description: "AI-powered resume tailoring tool",
+  applicationName: "Resume Maker",
+  appleWebApp: {
+    capable: true,
+    title: "Resume Maker",
+    statusBarStyle: "default",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#0a0a0a" },
+  ],
+  width: "device-width",
+  initialScale: 1,
 };
 
 export default function RootLayout({
